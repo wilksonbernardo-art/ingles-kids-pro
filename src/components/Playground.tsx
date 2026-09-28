@@ -608,8 +608,19 @@ function GameTopRacer({
         </span>
       </div>
 
-      {/* TELA DE VOO NAS NUVENS (Totalmente responsiva com aspect ratio) */}
-      <div className="relative mx-auto my-2 rounded-2xl overflow-hidden border-4 border-sky-400 shadow-xl select-none w-full max-w-[380px] aspect-[380/430]">
+      {/* TELA DE VOO NAS NUVENS (Com toque direto na tela) */}
+      <div 
+        onClick={(e) => {
+          const rect = e.currentTarget.getBoundingClientRect();
+          const clickX = e.clientX - rect.left;
+          if (clickX < rect.width / 2) {
+            moveLeft();
+          } else {
+            moveRight();
+          }
+        }}
+        className="relative mx-auto my-2 rounded-2xl overflow-hidden border-4 border-sky-400 shadow-xl select-none w-full max-w-[380px] aspect-[380/430] cursor-pointer"
+      >
         <canvas
           ref={canvasRef}
           width={SKY_W}
@@ -702,6 +713,9 @@ function GameWordSnake({ pool = [], onWin }: { pool: Word[]; onWin: () => void }
   const [gameWon, setGameWon] = useState(false);
   const [gameOver, setGameOver] = useState(false);
 
+  // Referência para calcular o gesto de deslize (swipe)
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+
   const stateRef = useRef({
     snake: [
       { x: 7, y: 7, char: '' },
@@ -779,6 +793,7 @@ function GameWordSnake({ pool = [], onWin }: { pool: Word[]; onWin: () => void }
     startWord();
   }, []);
 
+  // Controlos por teclado no computador
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const { dir, active } = stateRef.current;
@@ -798,6 +813,42 @@ function GameWordSnake({ pool = [], onWin }: { pool: Word[]; onWin: () => void }
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
+
+  // Manipuladores de deslize com o dedo (Swipe) no telemóvel
+  const handleTouchStart = (e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    touchStartRef.current = { x: touch.clientX, y: touch.clientY };
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (!touchStartRef.current || !stateRef.current.active) return;
+    const touch = e.changedTouches[0];
+    const diffX = touch.clientX - touchStartRef.current.x;
+    const diffY = touch.clientY - touchStartRef.current.y;
+    touchStartRef.current = null;
+
+    const minDistance = 20; // Sensibilidade do deslize
+
+    if (Math.abs(diffX) > Math.abs(diffY)) {
+      // Deslize Horizontal
+      if (Math.abs(diffX) > minDistance) {
+        if (diffX > 0 && stateRef.current.dir.x === 0) {
+          stateRef.current.dir = { x: 1, y: 0 }; // Direita
+        } else if (diffX < 0 && stateRef.current.dir.x === 0) {
+          stateRef.current.dir = { x: -1, y: 0 }; // Esquerda
+        }
+      }
+    } else {
+      // Deslize Vertical
+      if (Math.abs(diffY) > minDistance) {
+        if (diffY > 0 && stateRef.current.dir.y === 0) {
+          stateRef.current.dir = { x: 0, y: 1 }; // Baixo
+        } else if (diffY < 0 && stateRef.current.dir.y === 0) {
+          stateRef.current.dir = { x: 0, y: -1 }; // Cima
+        }
+      }
+    }
+  };
 
   useEffect(() => {
     let animId: number;
@@ -1006,8 +1057,12 @@ function GameWordSnake({ pool = [], onWin }: { pool: Word[]; onWin: () => void }
         })}
       </div>
 
-      {/* Tabuleiro Responsivo (aspect-square) */}
-      <div className="relative mx-auto my-2 rounded-2xl overflow-hidden border-4 border-emerald-600 shadow-xl w-full max-w-[360px] aspect-square">
+      {/* Tabuleiro com Suporte a Deslize (Swipe) e Bloqueio de Scroll Indesejado */}
+      <div 
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+        className="relative mx-auto my-2 rounded-2xl overflow-hidden border-4 border-emerald-600 shadow-xl w-full max-w-[360px] aspect-square touch-none select-none"
+      >
         <canvas ref={canvasRef} width={CANVAS_SIZE} height={CANVAS_SIZE} className="w-full h-full block" />
 
         {gameWon && (
@@ -1045,11 +1100,14 @@ function GameWordSnake({ pool = [], onWin }: { pool: Word[]; onWin: () => void }
         )}
       </div>
 
-      <p className="text-[11px] font-bold text-slate-400 mt-2 mb-3">
+      <p className="text-[11px] font-bold text-slate-400 mt-2 mb-1">
         Coma a letra amarela: <strong className="text-amber-600 text-sm">[{neededLetter}]</strong>
       </p>
+      <p className="text-[10px] text-slate-400 mb-3">
+        Dica: Deslize o dedo no ecrã para mudar de direção!
+      </p>
 
-      {/* Controles de Direção */}
+      {/* Controles de Direção Virtuais (Alternativa ao Swipe) */}
       <div className="flex flex-col items-center gap-1.5 max-w-[200px] mx-auto">
         <button
           type="button"
