@@ -32,7 +32,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [todayCompleted, setTodayCompleted] = useState(false);
 
-  // 1. Carregar módulos
+  // Carregar módulos com tolerância a falhas
   const loadModules = useCallback(async () => {
     try {
       const { data, error } = await supabase
@@ -40,26 +40,30 @@ export default function App() {
         .select('*')
         .order('module_order', { ascending: true });
 
-      if (!error && data) setModules(data as Module[]);
+      if (!error && data) {
+        setModules(data as Module[]);
+      }
     } catch (err) {
-      console.error('Erro ao carregar módulos:', err);
+      console.error('Erro ao buscar modulos:', err);
     }
   }, []);
 
-  // 2. Procurar ou criar perfil
+  // Buscar ou criar perfil do usuário logado
   const fetchProfileForUser = useCallback(async (userId: string, userMeta?: any) => {
     try {
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('user_id', userId)
-        .limit(1);
+        .maybeSingle();
 
-      if (error) console.error('Erro ao buscar perfil:', error);
+      if (data) {
+        setActiveProfile(data as Profile);
+        return data as Profile;
+      }
 
-      if (data && data.length > 0) {
-        setActiveProfile(data[0] as Profile);
-        return data[0] as Profile;
+      if (error && error.code !== 'PGRST116') {
+        console.error('Erro ao ler perfil:', error);
       }
 
       const defaultName =
@@ -76,51 +80,61 @@ export default function App() {
           avatar: '🦁',
           stars: 0,
         })
-        .select();
+        .select()
+        .single();
 
-      if (!insertError && newProfile && newProfile.length > 0) {
-        setActiveProfile(newProfile[0] as Profile);
-        return newProfile[0] as Profile;
+      if (!insertError && newProfile) {
+        setActiveProfile(newProfile as Profile);
+        return newProfile as Profile;
       }
     } catch (err) {
-      console.error('Exceção ao obter perfil:', err);
+      console.error('Exceção ao buscar/criar perfil:', err);
     }
     return null;
   }, []);
 
-  // 3. Recarregar os dados do perfil
   const loadUserProfile = useCallback(async () => {
     if (!session?.user?.id) return;
     await fetchProfileForUser(session.user.id, session.user.user_metadata);
   }, [session, fetchProfileForUser]);
 
-  // 4. Fluxo de carregamento e autenticação
-  const refreshSessionAndData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const { data: { session: currentSession } } = await supabase.auth.getSession();
-      setSession(currentSession);
-
-      if (currentSession?.user) {
-        await Promise.all([
-          fetchProfileForUser(currentSession.user.id, currentSession.user.user_metadata),
-          loadModules(),
-        ]);
-      } else {
-        await loadModules();
-      }
-    } catch (err) {
-      console.error('Erro ao sincronizar sessão:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [fetchProfileForUser, loadModules]);
-
+  // Inicialização com garantia de liberação do loading
   useEffect(() => {
-    refreshSessionAndData();
+    let isMounted = true;
+
+    async function initSession() {
+      try {
+        const { data: { session: curSession } } = await supabase.auth.getSession();
+        if (!isMounted) return;
+
+        setSession(curSession);
+
+        if (curSession?.user) {
+          await Promise.allSettled([
+            fetchProfileForUser(curSession.user.id, curSession.user.user_metadata),
+            loadModules(),
+          ]);
+        } else {
+          await loadModules();
+        }
+      } catch (e) {
+        console.error('Erro na inicializacao:', e);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    }
+
+    initSession();
+
+    // Trava de segurança: nunca deixa a tela presa em loading por mais de 2.5s
+    const timeout = setTimeout(() => {
+      if (isMounted) setLoading(false);
+    }, 2500);
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
+      if (!isMounted) return;
       setSession(newSession);
+
       if (newSession?.user) {
         await fetchProfileForUser(newSession.user.id, newSession.user.user_metadata);
       } else {
@@ -130,31 +144,31 @@ export default function App() {
     });
 
     return () => {
+      isMounted = false;
+      clearTimeout(timeout);
       subscription.unsubscribe();
     };
-  }, [refreshSessionAndData, fetchProfileForUser]);
+  }, [fetchProfileForUser, loadModules]);
 
-  // 5. Verificar progresso do dia
+  // Verificar conclusão do dia
   const checkTodayProgress = useCallback(async (profileId: string) => {
     try {
       const todayStr = new Date().toISOString().split('T')[0];
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('lesson_progress')
-        .select('status, completed_at, created_at')
-        .eq('profile_id', profileId)
-        .eq('status', 'completed');
+        .select('completed_at, created_at')
+        .eq('user_id', profileId);
 
-      if (!error && data && data.length > 0) {
-        const hasDoneToday = data.some((item) => {
-          const itemDate = (item.completed_at || item.created_at || '').split('T')[0];
-          return itemDate === todayStr;
+      if (data && data.length > 0) {
+        const doneToday = data.some((item) => {
+          const dt = (item.completed_at || item.created_at || '').split('T')[0];
+          return dt === todayStr;
         });
-        setTodayCompleted(hasDoneToday);
+        setTodayCompleted(doneToday);
       } else {
         setTodayCompleted(false);
       }
-    } catch (err) {
-      console.error('Erro ao verificar progresso de hoje:', err);
+    } catch {
       setTodayCompleted(false);
     }
   }, []);
@@ -165,36 +179,35 @@ export default function App() {
     }
   }, [activeProfile?.id, checkTodayProgress]);
 
-  // 6. Função de Sair Definitiva
+  // Sair de forma imediata e definitiva
   async function handleLogoutAccount() {
     try {
       await supabase.auth.signOut();
-      localStorage.clear();
-      sessionStorage.clear();
-    } catch (err) {
-      console.error('Erro ao efetuar logout:', err);
-    } finally {
-      setActiveProfile(null);
-      setSession(null);
-      setView({ name: 'trail' });
-      window.location.reload();
+    } catch (e) {
+      console.error(e);
     }
+    localStorage.clear();
+    sessionStorage.clear();
+    setSession(null);
+    setActiveProfile(null);
+    setView({ name: 'trail' });
+    setLoading(false);
   }
 
-  // 7. Atualizar Avatar na base de dados e no ecrã
+  // Atualizar Avatar local e remotamente
   async function handleAvatarUpdated(newAvatar: string) {
-    if (!activeProfile?.id) return;
+    if (!activeProfile) return;
+    // 1. Atualiza imediatamente na tela
+    setActiveProfile({ ...activeProfile, avatar: newAvatar });
+
+    // 2. Salva no banco de dados
     try {
-      const { error } = await supabase
+      await supabase
         .from('profiles')
         .update({ avatar: newAvatar })
-        .eq('id', activeProfile.id);
-
-      if (!error) {
-        setActiveProfile((prev) => (prev ? { ...prev, avatar: newAvatar } : null));
-      }
-    } catch (err) {
-      console.error('Erro ao atualizar avatar:', err);
+        .eq('user_id', activeProfile.user_id || activeProfile.id);
+    } catch (e) {
+      console.error('Erro ao salvar avatar:', e);
     }
   }
 
@@ -213,6 +226,7 @@ export default function App() {
     }
   }
 
+  // Se estiver carregando pela primeira vez
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-sky-100 via-indigo-50 to-rose-50 flex items-center justify-center p-4">
@@ -224,10 +238,12 @@ export default function App() {
     );
   }
 
+  // Não logado -> Formulário de login direto
   if (!session) {
-    return <AuthModal onSuccess={() => refreshSessionAndData()} />;
+    return <AuthModal onSuccess={() => setLoading(true)} />;
   }
 
+  // Logado sem perfil pronto
   if (!activeProfile) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-sky-100 via-indigo-50 to-rose-50 flex items-center justify-center p-4">
