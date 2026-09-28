@@ -1254,19 +1254,19 @@ function GameMemoryMatch({ pool = [], onWin }: { pool: Word[]; onWin: () => void
 
   if (gameWon) {
     return (
-      <div className="w-full max-w-md mx-auto bg-white border-2 border-purple-200 rounded-3xl p-8 text-center shadow-lg animate-in zoom-in-95">
-        <div className="text-6xl mb-3 animate-bounce">🏆</div>
-        <h3 className="text-2xl font-black text-slate-800 mb-1">Parabéns!</h3>
-        <p className="text-slate-500 font-semibold text-sm mb-4">
+      <div className="w-full max-w-md mx-auto bg-white border-2 border-purple-200 rounded-3xl p-6 sm:p-8 text-center shadow-lg animate-in zoom-in-95">
+        <div className="text-5xl sm:text-6xl mb-3 animate-bounce">🏆</div>
+        <h3 className="text-xl sm:text-2xl font-black text-slate-800 mb-1">Parabéns!</h3>
+        <p className="text-slate-500 font-semibold text-xs sm:text-sm mb-4">
           Você encontrou todos os {totalPairs} pares em <strong>{moves} tentativas</strong>!
         </p>
-        <div className="inline-flex items-center gap-1.5 bg-amber-50 border border-amber-200 px-4 py-1.5 rounded-full text-amber-700 font-black text-sm mb-6">
+        <div className="inline-flex items-center gap-1.5 bg-amber-50 border border-amber-200 px-4 py-1.5 rounded-full text-amber-700 font-black text-xs sm:text-sm mb-6">
           <span>⭐</span> +3 Estrelinhas ganhas!
         </div>
 
         <button
           onClick={setupGame}
-          className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-extrabold py-3.5 px-6 rounded-2xl shadow-md active:scale-95 transition-all cursor-pointer text-sm"
+          className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-extrabold py-3 sm:py-3.5 px-6 rounded-2xl shadow-md active:scale-95 transition-all cursor-pointer text-xs sm:text-sm"
         >
           Jogar Novamente ↺
         </button>
@@ -1275,18 +1275,18 @@ function GameMemoryMatch({ pool = [], onWin }: { pool: Word[]; onWin: () => void
   }
 
   return (
-    <div className="w-full max-w-2xl mx-auto flex flex-col items-center bg-purple-50/60 border-2 border-purple-100 rounded-3xl p-6">
-      <div className="flex items-center justify-between w-full mb-5 px-1">
-        <span className="bg-purple-100 text-purple-800 text-xs sm:text-sm font-black px-4 py-1.5 rounded-full uppercase tracking-wider">
+    <div className="w-full max-w-2xl mx-auto flex flex-col items-center bg-purple-50/60 border-2 border-purple-100 rounded-3xl p-3 sm:p-6 overflow-hidden">
+      <div className="flex items-center justify-between w-full mb-4 px-1">
+        <span className="bg-purple-100 text-purple-800 text-xs sm:text-sm font-black px-3 sm:px-4 py-1.5 rounded-full uppercase tracking-wider">
           Pares: {matchedPairs} / {totalPairs}
         </span>
-        <span className="text-xs sm:text-sm font-bold text-slate-500 bg-white border border-slate-200 px-3.5 py-1.5 rounded-full shadow-2xs">
+        <span className="text-xs sm:text-sm font-bold text-slate-500 bg-white border border-slate-200 px-3 py-1.5 rounded-full shadow-2xs">
           Tentativas: <strong className="text-slate-800">{moves}</strong>
         </span>
       </div>
 
       <div
-        className={`grid gap-3 sm:gap-4 w-full ${
+        className={`grid gap-2 sm:gap-4 w-full ${
           cards.length <= 6
             ? 'grid-cols-3 max-w-md'
             : cards.length <= 8
@@ -1298,26 +1298,26 @@ function GameMemoryMatch({ pool = [], onWin }: { pool: Word[]; onWin: () => void
           <button
             key={c.uid}
             onClick={() => handleCardClick(c)}
-            className={`w-full aspect-square rounded-2xl sm:rounded-3xl border-2 sm:border-4 flex flex-col items-center justify-center p-2 transition-all duration-200 cursor-pointer ${
+            className={`w-full aspect-square rounded-2xl sm:rounded-3xl border-2 sm:border-4 flex flex-col items-center justify-center p-1 sm:p-2 transition-all duration-200 cursor-pointer ${
               c.matched
                 ? 'bg-emerald-50 border-emerald-400 opacity-90 scale-98 shadow-xs'
                 : c.flipped
-                ? 'bg-white border-purple-500 shadow-md scale-103 ring-4 ring-purple-100'
+                ? 'bg-white border-purple-500 shadow-md scale-103 ring-2 sm:ring-4 ring-purple-100'
                 : 'bg-gradient-to-br from-purple-500 via-indigo-500 to-indigo-600 border-purple-300 shadow-md hover:shadow-lg hover:scale-103 active:scale-95 text-white'
             }`}
           >
             {c.flipped || c.matched ? (
               <div className="flex flex-col items-center justify-center h-full w-full select-none">
-                <span className="text-4xl sm:text-5xl drop-shadow-xs mb-1">
+                <span className="text-3xl sm:text-5xl drop-shadow-xs mb-0.5 sm:mb-1">
                   {c.word?.emoji || '⭐'}
                 </span>
-                <span className="text-xs sm:text-sm font-black text-slate-800 truncate max-w-full px-1">
+                <span className="text-[10px] sm:text-xs font-black text-slate-800 truncate max-w-full px-1">
                   {c.word?.word_en}
                 </span>
               </div>
             ) : (
               <div className="flex items-center justify-center h-full w-full select-none">
-                <span className="text-3xl sm:text-4xl font-black text-white/90 drop-shadow-sm">
+                <span className="text-2xl sm:text-4xl font-black text-white/90 drop-shadow-sm">
                   ❓
                 </span>
               </div>
@@ -1378,31 +1378,31 @@ function GameSpeedTap({ pool, onWin }: { pool: Word[]; onWin: () => void }) {
   if (!target) return <EmptyWarning />;
 
   return (
-    <div className="bg-amber-50 border-2 border-amber-200 rounded-3xl p-6 text-center">
-      <div className="flex items-center justify-between mb-4">
+    <div className="w-full max-w-md mx-auto bg-amber-50 border-2 border-amber-200 rounded-3xl p-4 sm:p-6 text-center overflow-hidden">
+      <div className="flex items-center justify-between mb-3 px-1">
         <span className="bg-amber-200 text-amber-800 text-xs font-black px-3 py-1 rounded-full uppercase">
           ⚡ Speed Tap
         </span>
-        <span className="text-amber-800 font-black text-sm">Tempo: {timer}s</span>
+        <span className="text-amber-800 font-black text-xs sm:text-sm">Tempo: {timer}s</span>
       </div>
 
-      <h3 className="text-2xl font-black text-slate-800 my-2">Toque em: "{target.word_en}"</h3>
+      <h3 className="text-xl sm:text-2xl font-black text-slate-800 my-2">Toque em: "{target.word_en}"</h3>
       <button
         onClick={() => speakWord(target.word_en)}
-        className="text-xs font-bold text-amber-700 bg-white border border-amber-300 px-3 py-1 rounded-full inline-flex items-center gap-1 mb-6 cursor-pointer"
+        className="text-xs font-bold text-amber-700 bg-white border border-amber-300 px-3 py-1 rounded-full inline-flex items-center gap-1 mb-4 sm:mb-6 cursor-pointer"
       >
         <Volume2 className="w-3.5 h-3.5" /> Ouvir
       </button>
 
-      <div className="grid grid-cols-2 gap-3 max-w-md mx-auto">
+      <div className="grid grid-cols-2 gap-2 sm:gap-3 w-full">
         {options.map((opt) => (
           <button
             key={opt.id}
             onClick={() => handlePick(opt)}
-            className="p-5 rounded-2xl bg-white border-2 border-amber-200 hover:border-amber-500 shadow-sm flex flex-col items-center cursor-pointer active:scale-95 transition-all"
+            className="p-3 sm:p-5 rounded-2xl bg-white border-2 border-amber-200 hover:border-amber-500 shadow-sm flex flex-col items-center cursor-pointer active:scale-95 transition-all"
           >
-            <span className="text-5xl mb-1">{opt.emoji || '⭐'}</span>
-            <span className="text-xs font-bold text-slate-600">{opt.word_pt}</span>
+            <span className="text-4xl sm:text-5xl mb-1">{opt.emoji || '⭐'}</span>
+            <span className="text-xs font-bold text-slate-600 truncate max-w-full">{opt.word_pt}</span>
           </button>
         ))}
       </div>
@@ -1455,21 +1455,22 @@ function GameWordBuilder({ pool, onWin }: { pool: Word[]; onWin: () => void }) {
   if (!target) return <EmptyWarning />;
 
   return (
-    <div className="bg-teal-50 border-2 border-teal-200 rounded-3xl p-6 text-center">
+    <div className="w-full max-w-md mx-auto bg-teal-50 border-2 border-teal-200 rounded-3xl p-4 sm:p-6 text-center overflow-hidden">
       <span className="bg-teal-200 text-teal-800 text-xs font-black px-3 py-1 rounded-full uppercase">
         🔤 Word Builder
       </span>
 
-      <div className="text-6xl my-3">{target.emoji || '⭐'}</div>
-      <h3 className="text-lg font-black text-slate-800">{target.word_pt}</h3>
+      <div className="text-5xl sm:text-6xl my-2 sm:my-3">{target.emoji || '⭐'}</div>
+      <h3 className="text-base sm:text-lg font-black text-slate-800">{target.word_pt}</h3>
 
-      <div className="flex justify-center gap-2 my-5">
+      {/* Caixas de Montagem Fluidas */}
+      <div className="flex justify-center gap-1.5 sm:gap-2 my-4 flex-wrap">
         {target.word_en.toUpperCase().replace(/[^A-Z]/g, '').split('').map((_, i) => {
           const char = picked[i] !== undefined ? scramble[picked[i]].char : '';
           return (
             <div
               key={i}
-              className="w-11 h-12 rounded-xl border-2 border-teal-500 bg-white flex items-center justify-center font-black text-xl text-teal-700 shadow-xs"
+              className="w-9 h-10 sm:w-11 sm:h-12 rounded-xl border-2 border-teal-500 bg-white flex items-center justify-center font-black text-base sm:text-xl text-teal-700 shadow-xs"
             >
               {char}
             </div>
@@ -1477,7 +1478,8 @@ function GameWordBuilder({ pool, onWin }: { pool: Word[]; onWin: () => void }) {
         })}
       </div>
 
-      <div className="flex justify-center gap-2 flex-wrap">
+      {/* Letras para Escolher */}
+      <div className="flex justify-center gap-1.5 sm:gap-2 flex-wrap">
         {scramble.map((item, idx) => {
           const used = picked.includes(idx);
           return (
@@ -1485,7 +1487,7 @@ function GameWordBuilder({ pool, onWin }: { pool: Word[]; onWin: () => void }) {
               key={item.id}
               onClick={() => handlePick(idx)}
               disabled={used}
-              className={`w-12 h-12 rounded-2xl font-black text-lg border-2 transition-all ${
+              className={`w-10 h-10 sm:w-12 sm:h-12 rounded-2xl font-black text-base sm:text-lg border-2 transition-all ${
                 used
                   ? 'border-slate-100 bg-slate-100 text-slate-300 opacity-40 cursor-not-allowed'
                   : 'border-teal-300 bg-white text-teal-800 shadow-sm hover:border-teal-500 active:scale-95 cursor-pointer'
@@ -1497,7 +1499,7 @@ function GameWordBuilder({ pool, onWin }: { pool: Word[]; onWin: () => void }) {
         })}
       </div>
 
-      <div className="mt-4">
+      <div className="mt-3 sm:mt-4">
         <button
           onClick={() => setPicked([])}
           className="text-xs font-bold text-slate-400 hover:text-slate-600 cursor-pointer"
@@ -1542,24 +1544,24 @@ function GameColorsMatch({ pool, onWin }: { pool: Word[]; onWin: () => void }) {
   if (!target) return <EmptyWarning />;
 
   return (
-    <div className="bg-rose-50 border-2 border-rose-200 rounded-3xl p-6 text-center">
+    <div className="w-full max-w-md mx-auto bg-rose-50 border-2 border-rose-200 rounded-3xl p-4 sm:p-6 text-center overflow-hidden">
       <span className="bg-rose-200 text-rose-800 text-xs font-black px-3 py-1 rounded-full uppercase">
         🎨 Cores & Formas
       </span>
 
-      <h3 className="text-xl font-black text-slate-800 my-4">
+      <h3 className="text-lg sm:text-xl font-black text-slate-800 my-3 sm:my-4">
         Encontre: <span className="text-rose-600 font-extrabold">{target.word_en}</span> ({target.word_pt})
       </h3>
 
-      <div className="grid grid-cols-2 gap-4 max-w-md mx-auto">
+      <div className="grid grid-cols-2 gap-2 sm:gap-4 w-full">
         {options.map((opt) => (
           <button
             key={opt.id}
             onClick={() => handlePick(opt)}
-            className="p-6 rounded-2xl bg-white border-2 border-rose-200 hover:border-rose-400 shadow-sm flex flex-col items-center cursor-pointer hover:scale-105 active:scale-95 transition-all"
+            className="p-4 sm:p-6 rounded-2xl bg-white border-2 border-rose-200 hover:border-rose-400 shadow-sm flex flex-col items-center cursor-pointer hover:scale-105 active:scale-95 transition-all"
           >
-            <span className="text-6xl mb-2">{opt.emoji || '⭐'}</span>
-            <span className="text-xs font-bold text-slate-500">{opt.word_pt}</span>
+            <span className="text-5xl sm:text-6xl mb-1 sm:mb-2">{opt.emoji || '⭐'}</span>
+            <span className="text-xs font-bold text-slate-500 truncate max-w-full">{opt.word_pt}</span>
           </button>
         ))}
       </div>
@@ -1600,30 +1602,31 @@ function GameShadowHunter({ pool, onWin }: { pool: Word[]; onWin: () => void }) 
   if (!target) return <EmptyWarning />;
 
   return (
-    <div className="bg-violet-50 border-2 border-violet-200 rounded-3xl p-6 text-center">
+    <div className="w-full max-w-md mx-auto bg-violet-50 border-2 border-violet-200 rounded-3xl p-4 sm:p-6 text-center overflow-hidden">
       <span className="bg-violet-200 text-violet-800 text-xs font-black px-3 py-1 rounded-full uppercase">
         🕵️‍♂️ Quem é essa Sombra?
       </span>
 
-      <div className="my-6">
-        <span className="text-8xl inline-block filter brightness-0 opacity-80 drop-shadow-md">
+      <div className="my-4 sm:my-6">
+        <span className="text-7xl sm:text-8xl inline-block filter brightness-0 opacity-80 drop-shadow-md">
           {target.emoji || '⭐'}
         </span>
       </div>
 
       <button
         onClick={() => speakWord(target.word_en)}
-        className="text-xs font-bold text-violet-700 bg-white border border-violet-300 px-3 py-1.5 rounded-full inline-flex items-center gap-1 mb-6 cursor-pointer hover:bg-violet-100"
+        className="text-xs font-bold text-violet-700 bg-white border border-violet-300 px-3 py-1.5 rounded-full inline-flex items-center gap-1 mb-4 sm:mb-6 cursor-pointer hover:bg-violet-100"
       >
         <Volume2 className="w-3.5 h-3.5" /> Ouvir a dica em inglês
       </button>
 
-      <div className="grid grid-cols-4 gap-3 max-w-md mx-auto">
+      {/* Responsivo: 2 colunas no celular e 4 no computador/tablet */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3 w-full">
         {options.map((opt) => (
           <button
             key={opt.id}
             onClick={() => handlePick(opt)}
-            className="p-4 rounded-2xl bg-white border-2 border-violet-200 hover:border-violet-500 shadow-sm flex flex-col items-center cursor-pointer hover:scale-105 active:scale-95 transition-all"
+            className="p-3 sm:p-4 rounded-2xl bg-white border-2 border-violet-200 hover:border-violet-500 shadow-sm flex flex-col items-center justify-center cursor-pointer hover:scale-105 active:scale-95 transition-all"
           >
             <span className="text-4xl">{opt.emoji || '⭐'}</span>
           </button>
