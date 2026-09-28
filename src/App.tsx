@@ -185,10 +185,21 @@ export default function App() {
   const isPlaygroundUnlocked = isWeekend || todayCompleted;
 
   async function handleLogoutAccount() {
+  try {
+    setLoading(true);
     await supabase.auth.signOut();
+    localStorage.clear();
+    sessionStorage.clear();
+  } catch (err) {
+    console.error('Erro ao sair:', err);
+  } finally {
     setActiveProfile(null);
     setSession(null);
+    setView({ name: 'trail' });
+    setLoading(false);
+    window.location.reload();
   }
+}
 
   function handleSelectModule(m: Module) {
     setView({ name: 'lessons', module: m });
