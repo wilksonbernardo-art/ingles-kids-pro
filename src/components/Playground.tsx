@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { ArrowLeft, Volume2, Star, Heart, Trophy } from 'lucide-react';
 import type { Module, Word } from '@/lib/supabase';
 import { supabase } from '@/lib/supabase';
@@ -1469,23 +1469,33 @@ function GameSpeedTap({ pool, onWin }: { pool: Word[]; onWin: () => void }) {
 }
 
 /* ==================== 5. WORD BUILDER ==================== */
-function GameWordBuilder({ pool, onWin }: { pool: Word[]; onWin: () => void }) {
-  const eligible = pool.filter((w) => w.word_en && w.word_en.trim().length >= 3);
+function GameWordBuilder({ pool = [], onWin }: { pool: Word[]; onWin: () => void }) {
+  // 1. Memorização estável do array de palavras para quebrar o ciclo de render
+  const eligible = useMemo(() => {
+    return (pool || []).filter((w) => w && w.word_en && w.word_en.trim().length >= 3);
+  }, [pool]);
+
   const [target, setTarget] = useState<Word | null>(null);
   const [picked, setPicked] = useState<number[]>([]);
   const [scramble, setScramble] = useState<{ id: number; char: string }[]>([]);
+  const [isLocked, setIsLocked] = useState(false);
   const roundTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // 2. startRound estável dependendo apenas da quantidade de palavras
   const startRound = useCallback(() => {
     if (eligible.length === 0) return;
     const chosen = eligible[Math.floor(Math.random() * eligible.length)];
     setTarget(chosen);
     setPicked([]);
+    setIsLocked(false);
+
     const letters = chosen.word_en.toUpperCase().replace(/[^A-Z]/g, '').split('');
     setScramble(letters.map((char, id) => ({ id, char })).sort(() => Math.random() - 0.5));
+    
     speakWord(chosen.word_en);
-  }, [eligible]);
+  }, [eligible.length]);
 
+  // 3. Execução segura apenas na montagem ou quando a lista de palavras mudar
   useEffect(() => {
     startRound();
     return () => {
@@ -1494,26 +1504,35 @@ function GameWordBuilder({ pool, onWin }: { pool: Word[]; onWin: () => void }) {
   }, [startRound]);
 
   const handlePick = (id: number) => {
-    if (!target || picked.includes(id)) return;
+    if (!target || picked.includes(id) || isLocked) return;
     const newPicked = [...picked, id];
     setPicked(newPicked);
 
     const targetClean = target.word_en.toUpperCase().replace(/[^A-Z]/g, '');
     const currentStr = newPicked.map((idx) => scramble[idx].char).join('');
+
     if (currentStr.length === targetClean.length) {
+      setIsLocked(true); // Bloqueia cliques adicionais durante a animação
+
       if (currentStr === targetClean) {
+        if (typeof playSuccessSound === 'function') playSuccessSound();
         onWin();
-        roundTimerRef.current = setTimeout(startRound, 800);
+        roundTimerRef.current = setTimeout(() => {
+          startRound();
+        }, 900);
       } else {
-        roundTimerRef.current = setTimeout(() => setPicked([]), 500);
+        roundTimerRef.current = setTimeout(() => {
+          setPicked([]);
+          setIsLocked(false);
+        }, 600);
       }
     }
   };
 
-  if (!target) return <EmptyWarning />;
+  if (eligible.length === 0 || !target) return <EmptyWarning />;
 
   return (
-    <div className="w-full max-w-md mx-auto bg-teal-50 border-2 border-teal-200 rounded-3xl p-4 sm:p-6 text-center overflow-hidden">
+    <div className="w-full max-w-md mx-auto bg-teal-50 border-2 border-teal-200 rounded-3xl p-4 sm:p-6 text-center overflow-hidden select-none">
       <span className="bg-teal-200 text-teal-800 text-xs font-black px-3 py-1 rounded-full uppercase">
         🔤 Word Builder
       </span>
@@ -1524,13 +1543,13 @@ function GameWordBuilder({ pool, onWin }: { pool: Word[]; onWin: () => void }) {
       {/* Caixas de Montagem Fluidas */}
       <div className="flex justify-center gap-1.5 sm:gap-2 my-4 flex-wrap">
         {target.word_en.toUpperCase().replace(/[^A-Z]/g, '').split('').map((_, i) => {
-          const char = picked[i] !== undefined ? scramble[picked[i]].char : '';
+          const char = picked[i] !== undefined ? scramble[picked[i]]?.char : '';
           return (
             <div
               key={i}
               className="w-9 h-10 sm:w-11 sm:h-12 rounded-xl border-2 border-teal-500 bg-white flex items-center justify-center font-black text-base sm:text-xl text-teal-700 shadow-xs"
             >
-              {char}
+              {char || ''}
             </div>
           );
         })}
@@ -1544,7 +1563,7 @@ function GameWordBuilder({ pool, onWin }: { pool: Word[]; onWin: () => void }) {
             <button
               key={item.id}
               onClick={() => handlePick(idx)}
-              disabled={used}
+              disabled={used || isLocked}
               className={`w-10 h-10 sm:w-12 sm:h-12 rounded-2xl font-black text-base sm:text-lg border-2 transition-all ${
                 used
                   ? 'border-slate-100 bg-slate-100 text-slate-300 opacity-40 cursor-not-allowed'
@@ -1559,8 +1578,11 @@ function GameWordBuilder({ pool, onWin }: { pool: Word[]; onWin: () => void }) {
 
       <div className="mt-3 sm:mt-4">
         <button
-          onClick={() => setPicked([])}
-          className="text-xs font-bold text-slate-400 hover:text-slate-600 cursor-pointer"
+          onClick={() => {
+            if (!isLocked) setPicked([]);
+          }}
+          disabled={isLocked}
+          className="text-xs font-bold text-slate-400 hover:text-slate-600 cursor-pointer disabled:opacity-40"
         >
           Limpar e tentar de novo ↺
         </button>
