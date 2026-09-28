@@ -10,7 +10,8 @@ type ModuleLessonsProps = {
   onStartLesson: (lessonDay: number) => void;
 };
 
-function isSameDay(dateStr: string): boolean {
+function isSameDay(dateStr?: string | null): boolean {
+  if (!dateStr) return false;
   const d = new Date(dateStr);
   const now = new Date();
   return (
@@ -45,7 +46,12 @@ export default function ModuleLessons({ module, profileId, onBack, onStartLesson
     );
   }
 
-  // Verifica se as 5 aulas da semana estão concluídas
+  // Verifica se o aluno já concluiu alguma lição hoje
+  const completedToday = progress.some(
+    (p) => p.status === 'completed' && isSameDay(p.completed_at || p.created_at)
+  );
+
+  // Contagem das 5 aulas concluídas
   const completedDaysCount = progress.filter(
     (p) => p.lesson_day >= 1 && p.lesson_day <= 5 && p.status === 'completed'
   ).length;
@@ -72,7 +78,7 @@ export default function ModuleLessons({ module, profileId, onBack, onStartLesson
         <div className="flex items-center justify-center gap-3 mt-3 flex-wrap">
           <div className="inline-flex items-center gap-2 bg-indigo-50 text-indigo-600 rounded-2xl px-4 py-2 text-sm font-bold">
             <Calendar className="w-4 h-4" />
-            5 Aulas Semanais + Prova Avaliativa
+            1 Aula por Dia • 5 Aulas + Prova Semanal
           </div>
         </div>
       </div>
@@ -116,7 +122,17 @@ export default function ModuleLessons({ module, profileId, onBack, onStartLesson
         {LESSON_DAYS.map((d) => {
           const dayProgress = progress.find((p) => p.lesson_day === d.day);
           const done = dayProgress?.status === 'completed';
-          const inProgress = dayProgress?.status === 'in_progress' && isSameDay(dayProgress.created_at);
+          const inProgress = dayProgress?.status === 'in_progress';
+
+          // Regras de Bloqueio:
+          // 1. Anterior precisa estar concluída
+          const prevDayDone = d.day === 1 || progress.some((p) => p.lesson_day === d.day - 1 && p.status === 'completed');
+          
+          // 2. Se ainda não fez essa aula e já concluiu outra hoje, bloqueia até amanhã
+          const lockedByDailyLimit = !done && completedToday && !inProgress;
+
+          // Aula liberada se a anterior foi feita e não atingiu o limite de 1 por dia
+          const isUnlocked = done || inProgress || (prevDayDone && !lockedByDailyLimit);
 
           return (
             <div
@@ -126,7 +142,9 @@ export default function ModuleLessons({ module, profileId, onBack, onStartLesson
                   ? 'bg-green-50/60 border-green-200 shadow-xs'
                   : inProgress
                   ? 'bg-amber-50 border-amber-300 shadow-md'
-                  : 'bg-white border-gray-100 shadow-sm hover:shadow-md'
+                  : isUnlocked
+                  ? 'bg-white border-gray-100 shadow-sm hover:shadow-md'
+                  : 'bg-slate-50 border-slate-200 opacity-70'
               }`}
             >
               <div className="flex items-center justify-between gap-3">
@@ -137,34 +155,51 @@ export default function ModuleLessons({ module, profileId, onBack, onStartLesson
                         ? 'bg-green-500 text-white'
                         : inProgress
                         ? 'bg-amber-400 text-white'
-                        : 'bg-indigo-100 text-indigo-700'
+                        : isUnlocked
+                        ? 'bg-indigo-100 text-indigo-700'
+                        : 'bg-slate-200 text-slate-400'
                     }`}
                   >
-                    {done ? <CheckCircle2 className="w-6 h-6" /> : d.day}
+                    {done ? <CheckCircle2 className="w-6 h-6" /> : !isUnlocked ? <Lock className="w-5 h-5" /> : d.day}
                   </div>
                   <div className="min-w-0">
                     <p className="font-bold text-gray-700">
                       {d.label} <span className="text-gray-400 font-normal">({d.weekday})</span>
                     </p>
                     <p className="text-xs text-gray-400">
-                      {done ? 'Aula Concluída' : inProgress ? `Em progresso • Passo ${dayProgress?.current_step} de 4` : '4 passos diários'}
+                      {done
+                        ? 'Aula Concluída'
+                        : inProgress
+                        ? `Em progresso • Passo ${dayProgress?.current_step || 1} de 4`
+                        : !prevDayDone
+                        ? `Conclua a Aula ${d.day - 1} primeiro`
+                        : lockedByDailyLimit
+                        ? 'Disponível amanhã (1 aula por dia)'
+                        : '4 passos diários'}
                     </p>
                   </div>
                 </div>
 
-                <button
-                  onClick={() => onStartLesson(d.day)}
-                  className={`flex items-center gap-2 rounded-2xl px-5 py-3 font-bold text-sm shrink-0 transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-md ${
-                    done
-                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                      : inProgress
-                      ? 'bg-amber-500 hover:bg-amber-600 text-white'
-                      : 'bg-gradient-to-br from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white'
-                  }`}
-                >
-                  <Play className="w-4 h-4 fill-current" />
-                  {done ? 'Revisar' : inProgress ? 'Continuar' : 'Começar'}
-                </button>
+                {isUnlocked ? (
+                  <button
+                    onClick={() => onStartLesson(d.day)}
+                    className={`flex items-center gap-2 rounded-2xl px-5 py-3 font-bold text-sm shrink-0 transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-md ${
+                      done
+                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                        : inProgress
+                        ? 'bg-amber-500 hover:bg-amber-600 text-white'
+                        : 'bg-gradient-to-br from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white'
+                    }`}
+                  >
+                    <Play className="w-4 h-4 fill-current" />
+                    {done ? 'Revisar' : inProgress ? 'Continuar' : 'Começar'}
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-1.5 text-slate-400 font-bold text-xs bg-slate-200/80 px-4 py-2.5 rounded-2xl shrink-0">
+                    <Lock className="w-4 h-4" />
+                    Bloqueado
+                  </div>
+                )}
               </div>
             </div>
           );
@@ -203,7 +238,7 @@ export default function ModuleLessons({ module, profileId, onBack, onStartLesson
                 <p className="text-xs text-slate-500 font-medium mt-0.5">
                   {isWeeklyChallengeUnlocked
                     ? '10 Questões Sem Repetição • Nota Real & Pontuação Justa'
-                    : `Conclui todas as 5 aulas primeiro (${completedDaysCount}/5 concluídas)`}
+                    : `Conclua todas as 5 aulas primeiro (${completedDaysCount}/5 concluídas)`}
                 </p>
               </div>
             </div>
