@@ -274,8 +274,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-sky-50 via-indigo-50 to-rose-50 pb-24">
-      <TopBar
+<div className="min-h-screen bg-gradient-to-br from-sky-50 via-indigo-50 to-rose-50 pb-32 sm:pb-24">      <TopBar
         profiles={[activeProfile]}
         activeProfileId={activeProfile.id}
         onSelectProfile={() => {}}

@@ -577,9 +577,9 @@ function GameTopRacer({
   if (!currentWord) return <EmptyWarning />;
 
   return (
-    <div className="bg-sky-50/70 border-2 border-sky-200 rounded-3xl p-5 md:p-6 text-center max-w-xl mx-auto shadow-sm">
+    <div className="bg-sky-50/70 border-2 border-sky-200 rounded-3xl p-3 sm:p-5 md:p-6 text-center w-full max-w-md mx-auto shadow-sm overflow-hidden">
       {/* Topo: Placar e Vidas */}
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-3 px-1">
         <span className="bg-sky-200 text-sky-950 text-xs font-black px-3 py-1 rounded-full uppercase tracking-wider">
           ☁️ Top Sky Flight
         </span>
@@ -598,7 +598,7 @@ function GameTopRacer({
       </div>
 
       {/* Placar de Pontos e Recorde */}
-      <div className="flex items-center justify-between px-2 mb-2">
+      <div className="flex items-center justify-between px-1 mb-2">
         <span className="text-xs font-extrabold text-slate-600 bg-white border border-slate-200 px-3 py-1 rounded-full shadow-2xs">
           Pontos: <strong className="text-sky-600 text-sm">{score}</strong>
         </span>
@@ -608,30 +608,32 @@ function GameTopRacer({
         </span>
       </div>
 
-      {/* TELA DE VOO NAS NUVENS */}
-      <div
-        className="relative mx-auto my-2 rounded-2xl overflow-hidden border-4 border-sky-400 shadow-xl select-none"
-        style={{ width: `${SKY_W}px`, height: `${SKY_H}px` }}
-      >
-        <canvas ref={canvasRef} width={SKY_W} height={SKY_H} className="block" />
+      {/* TELA DE VOO NAS NUVENS (Totalmente responsiva com aspect ratio) */}
+      <div className="relative mx-auto my-2 rounded-2xl overflow-hidden border-4 border-sky-400 shadow-xl select-none w-full max-w-[380px] aspect-[380/430]">
+        <canvas
+          ref={canvasRef}
+          width={SKY_W}
+          height={SKY_H}
+          className="w-full h-full block object-cover"
+        />
 
-        {/* PALAVRA DE REFERÊNCIA CENTRALIZADA NO TOPO DENTRO DO JOGO COM IMAGEM NÍTIDA */}
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 w-[90%] max-w-[320px]">
-          <div className="bg-white/95 backdrop-blur-md border-2 border-sky-300 rounded-2xl py-2 px-3 shadow-md flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
+        {/* Palavra de referência centralizada no topo dentro do jogo */}
+        <div className="absolute top-2.5 sm:top-3 left-1/2 -translate-x-1/2 z-10 w-[92%] max-w-[320px]">
+          <div className="bg-white/95 backdrop-blur-md border-2 border-sky-300 rounded-2xl py-1.5 sm:py-2 px-2.5 sm:px-3 shadow-md flex items-center justify-between gap-1.5 sm:gap-2">
+            <div className="flex items-center gap-2 min-w-0">
               <WordVisual word={currentWord} size="sm" />
-              <div className="text-left">
-                <h4 className="font-black text-slate-800 text-xs sm:text-sm leading-tight">
+              <div className="text-left min-w-0">
+                <h4 className="font-black text-slate-800 text-xs sm:text-sm leading-tight truncate">
                   {currentWord.word_pt || (currentWord as any).translation}
                 </h4>
-                <p className="text-[10px] font-bold text-slate-400">Voe na nuvem correta</p>
+                <p className="text-[9px] sm:text-[10px] font-bold text-slate-400">Voe na nuvem correta</p>
               </div>
             </div>
 
             <button
               type="button"
               onClick={() => speakWord(currentWord.word_en, (currentWord as any).audio_url)}
-              className="flex items-center gap-1 bg-sky-100 hover:bg-sky-200 text-sky-900 text-[11px] font-black px-2.5 py-1.5 rounded-xl cursor-pointer transition-all active:scale-95 shadow-2xs shrink-0"
+              className="flex items-center gap-1 bg-sky-100 hover:bg-sky-200 text-sky-900 text-[10px] sm:text-[11px] font-black px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-xl cursor-pointer transition-all active:scale-95 shadow-2xs shrink-0"
               title="Ouvir som novamente"
             >
               <Volume2 className="w-3.5 h-3.5" /> Ouvir
@@ -662,18 +664,18 @@ function GameTopRacer({
       </div>
 
       {/* CONTROLES: NUVEM ESQUERDA / DIREITA */}
-      <div className="grid grid-cols-2 gap-3 max-w-xs mx-auto mt-3">
+      <div className="grid grid-cols-2 gap-2 sm:gap-3 w-full max-w-[380px] mx-auto mt-3">
         <button
           type="button"
           onClick={moveLeft}
-          className="py-3.5 bg-gradient-to-r from-blue-500 to-indigo-600 active:scale-95 hover:from-blue-600 hover:to-indigo-700 text-white font-black text-sm rounded-2xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
+          className="py-3 sm:py-3.5 bg-gradient-to-r from-blue-500 to-indigo-600 active:scale-95 hover:from-blue-600 hover:to-indigo-700 text-white font-black text-xs sm:text-sm rounded-2xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-1"
         >
           ⬅️ Nuvem Esquerda
         </button>
         <button
           type="button"
           onClick={moveRight}
-          className="py-3.5 bg-gradient-to-r from-pink-500 to-rose-600 active:scale-95 hover:from-pink-600 hover:to-rose-700 text-white font-black text-sm rounded-2xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
+          className="py-3 sm:py-3.5 bg-gradient-to-r from-pink-500 to-rose-600 active:scale-95 hover:from-pink-600 hover:to-rose-700 text-white font-black text-xs sm:text-sm rounded-2xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-1"
         >
           Nuvem Direita ➡️
         </button>
@@ -770,7 +772,6 @@ function GameWordSnake({ pool = [], onWin }: { pool: Word[]; onWin: () => void }
     setGameWon(false);
     setGameOver(false);
 
-    // Reproduz áudio nativo MP3 (com fallback para voz do navegador)
     speakWord(chosen.word_en, (chosen as any).audio_url);
   };
 
@@ -946,8 +947,8 @@ function GameWordSnake({ pool = [], onWin }: { pool: Word[]; onWin: () => void }
   const ptWord = (targetWord as any).word_pt || (targetWord as any).translation || '';
 
   return (
-    <div className="bg-emerald-50/60 border-2 border-emerald-200 rounded-3xl p-5 md:p-7 text-center max-w-xl mx-auto shadow-sm">
-      <div className="flex items-center justify-between mb-4">
+    <div className="bg-emerald-50/60 border-2 border-emerald-200 rounded-3xl p-3 sm:p-5 md:p-7 text-center w-full max-w-md mx-auto shadow-sm overflow-hidden">
+      <div className="flex items-center justify-between mb-3 px-1">
         <span className="bg-emerald-200 text-emerald-900 text-xs font-black px-3 py-1 rounded-full uppercase tracking-wider">
           🐍 Word Snake
         </span>
@@ -965,25 +966,25 @@ function GameWordSnake({ pool = [], onWin }: { pool: Word[]; onWin: () => void }
       </div>
 
       {/* Card da Palavra de Referência com Ilustração Nítida */}
-      <div className="bg-white rounded-2xl p-3.5 border border-emerald-100 shadow-xs mb-4 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2.5">
+      <div className="bg-white rounded-2xl p-2.5 sm:p-3.5 border border-emerald-100 shadow-xs mb-3 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
           <WordVisual word={targetWord} size="md" />
-          <div className="text-left">
-            <h4 className="font-black text-slate-800 text-sm leading-tight">{ptWord}</h4>
-            <p className="text-[11px] font-bold text-slate-400">Monte a palavra em inglês</p>
+          <div className="text-left min-w-0">
+            <h4 className="font-black text-slate-800 text-xs sm:text-sm leading-tight truncate">{ptWord}</h4>
+            <p className="text-[10px] sm:text-[11px] font-bold text-slate-400">Monte a palavra em inglês</p>
           </div>
         </div>
 
         <button
           type="button"
           onClick={() => speakWord(targetWord.word_en, (targetWord as any).audio_url)}
-          className="flex items-center gap-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 text-xs font-black px-3 py-1.5 rounded-xl cursor-pointer transition-all active:scale-95 shadow-2xs shrink-0"
+          className="flex items-center gap-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 text-[11px] sm:text-xs font-black px-2.5 sm:px-3 py-1.5 rounded-xl cursor-pointer transition-all active:scale-95 shadow-2xs shrink-0"
         >
-          <Volume2 className="w-4 h-4" /> Ouvir som
+          <Volume2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> Ouvir som
         </button>
       </div>
 
-      <div className="flex justify-center gap-1.5 sm:gap-2 mb-4 flex-wrap">
+      <div className="flex justify-center gap-1.5 sm:gap-2 mb-3 flex-wrap">
         {clean.split('').map((char, index) => {
           const filled = spelledLetters[index];
           const isCurrentTarget = index === spelledLetters.length;
@@ -991,7 +992,7 @@ function GameWordSnake({ pool = [], onWin }: { pool: Word[]; onWin: () => void }
           return (
             <div
               key={index}
-              className={`w-9 h-10 sm:w-11 sm:h-12 rounded-xl border-2 flex items-center justify-center font-black text-lg sm:text-xl transition-all ${
+              className={`w-8 h-9 sm:w-11 sm:h-12 rounded-xl border-2 flex items-center justify-center font-black text-base sm:text-xl transition-all ${
                 filled
                   ? 'border-emerald-500 bg-emerald-500 text-white shadow-xs'
                   : isCurrentTarget
@@ -1005,8 +1006,9 @@ function GameWordSnake({ pool = [], onWin }: { pool: Word[]; onWin: () => void }
         })}
       </div>
 
-      <div className="relative mx-auto my-2 rounded-2xl overflow-hidden border-4 border-emerald-600 shadow-xl w-[360px] h-[360px]">
-        <canvas ref={canvasRef} width={CANVAS_SIZE} height={CANVAS_SIZE} className="block" />
+      {/* Tabuleiro Responsivo (aspect-square) */}
+      <div className="relative mx-auto my-2 rounded-2xl overflow-hidden border-4 border-emerald-600 shadow-xl w-full max-w-[360px] aspect-square">
+        <canvas ref={canvasRef} width={CANVAS_SIZE} height={CANVAS_SIZE} className="w-full h-full block" />
 
         {gameWon && (
           <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-xs flex flex-col items-center justify-center p-4 z-20 animate-in zoom-in-95">
@@ -1043,10 +1045,11 @@ function GameWordSnake({ pool = [], onWin }: { pool: Word[]; onWin: () => void }
         )}
       </div>
 
-      <p className="text-[11px] font-bold text-slate-400 mt-2 mb-4">
+      <p className="text-[11px] font-bold text-slate-400 mt-2 mb-3">
         Coma a letra amarela: <strong className="text-amber-600 text-sm">[{neededLetter}]</strong>
       </p>
 
+      {/* Controles de Direção */}
       <div className="flex flex-col items-center gap-1.5 max-w-[200px] mx-auto">
         <button
           type="button"
