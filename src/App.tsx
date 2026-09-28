@@ -240,7 +240,19 @@ export default function App() {
 
   // Não logado -> Formulário de login direto
   if (!session) {
-    return <AuthModal onSuccess={() => setLoading(true)} />;
+    return (
+      <AuthModal
+        onSuccess={async () => {
+          setLoading(true);
+          const { data: { session: newSession } } = await supabase.auth.getSession();
+          if (newSession?.user) {
+            setSession(newSession);
+            await fetchProfileForUser(newSession.user.id, newSession.user.user_metadata);
+          }
+          setLoading(false);
+        }}
+      />
+    );
   }
 
   // Logado sem perfil pronto
