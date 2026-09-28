@@ -32,7 +32,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [todayCompleted, setTodayCompleted] = useState(false);
 
-  // 1. Carregar módulos pedagógicos
+  // 1. Carregar módulos
   const loadModules = useCallback(async () => {
     try {
       const { data, error } = await supabase
@@ -46,25 +46,22 @@ export default function App() {
     }
   }, []);
 
-  // 2. Carregar perfil do usuário de forma isolada
+  // 2. Procurar ou criar perfil
   const fetchProfileForUser = useCallback(async (userId: string, userMeta?: any) => {
     try {
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('user_id', userId)
-        .order('created_at', { ascending: true });
+        .limit(1);
 
-      if (error) {
-        console.error('Erro ao buscar perfil:', error);
-      }
+      if (error) console.error('Erro ao buscar perfil:', error);
 
       if (data && data.length > 0) {
         setActiveProfile(data[0] as Profile);
         return data[0] as Profile;
       }
 
-      // Se ainda não existir perfil cadastrado
       const defaultName =
         userMeta?.name ||
         userMeta?.email?.split('@')[0] ||
@@ -73,6 +70,7 @@ export default function App() {
       const { data: newProfile, error: insertError } = await supabase
         .from('profiles')
         .insert({
+          id: userId,
           user_id: userId,
           name: defaultName,
           avatar: '🦁',
@@ -80,9 +78,7 @@ export default function App() {
         })
         .select();
 
-      if (insertError) {
-        console.error('Erro ao criar perfil:', insertError);
-      } else if (newProfile && newProfile.length > 0) {
+      if (!insertError && newProfile && newProfile.length > 0) {
         setActiveProfile(newProfile[0] as Profile);
         return newProfile[0] as Profile;
       }
@@ -92,49 +88,41 @@ export default function App() {
     return null;
   }, []);
 
-  // 3. Atualizar perfil recarregando os dados
+  // 3. Recarregar os dados do perfil
   const loadUserProfile = useCallback(async () => {
     if (!session?.user?.id) return;
     await fetchProfileForUser(session.user.id, session.user.user_metadata);
   }, [session, fetchProfileForUser]);
 
-  // 4. Inicialização de autenticação e listeners
-  useEffect(() => {
-    let isMounted = true;
+  // 4. Fluxo de carregamento e autenticação
+  const refreshSessionAndData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data: { session: currentSession } } = await supabase.auth.getSession();
+      setSession(currentSession);
 
-    async function init() {
-      try {
-        const { data: { session: currentSession } } = await supabase.auth.getSession();
-        if (!isMounted) return;
-
-        setSession(currentSession);
-
-        if (currentSession?.user) {
-          await Promise.all([
-            fetchProfileForUser(currentSession.user.id, currentSession.user.user_metadata),
-            loadModules(),
-          ]);
-        } else {
-          await loadModules();
-        }
-      } catch (err) {
-        console.error('Erro ao inicializar sessão:', err);
-      } finally {
-        if (isMounted) setLoading(false);
-      }
-    }
-
-    init();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
-      if (!isMounted) return;
-      setSession(newSession);
-
-      if (newSession?.user) {
+      if (currentSession?.user) {
         await Promise.all([
-          fetchProfileForUser(newSession.user.id, newSession.user.user_metadata),
+          fetchProfileForUser(currentSession.user.id, currentSession.user.user_metadata),
           loadModules(),
         ]);
+      } else {
+        await loadModules();
+      }
+    } catch (err) {
+      console.error('Erro ao sincronizar sessão:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchProfileForUser, loadModules]);
+
+  useEffect(() => {
+    refreshSessionAndData();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
+      setSession(newSession);
+      if (newSession?.user) {
+        await fetchProfileForUser(newSession.user.id, newSession.user.user_metadata);
       } else {
         setActiveProfile(null);
       }
@@ -142,12 +130,11 @@ export default function App() {
     });
 
     return () => {
-      isMounted = false;
       subscription.unsubscribe();
     };
-  }, [fetchProfileForUser, loadModules]);
+  }, [refreshSessionAndData, fetchProfileForUser]);
 
-  // 5. Verificar se a lição do dia foi concluída
+  // 5. Verificar progresso do dia
   const checkTodayProgress = useCallback(async (profileId: string) => {
     try {
       const todayStr = new Date().toISOString().split('T')[0];
@@ -178,28 +165,43 @@ export default function App() {
     }
   }, [activeProfile?.id, checkTodayProgress]);
 
-  // Regra de fim de semana liberado
+  // 6. Função de Sair Definitiva
+  async function handleLogoutAccount() {
+    try {
+      await supabase.auth.signOut();
+      localStorage.clear();
+      sessionStorage.clear();
+    } catch (err) {
+      console.error('Erro ao efetuar logout:', err);
+    } finally {
+      setActiveProfile(null);
+      setSession(null);
+      setView({ name: 'trail' });
+      window.location.reload();
+    }
+  }
+
+  // 7. Atualizar Avatar na base de dados e no ecrã
+  async function handleAvatarUpdated(newAvatar: string) {
+    if (!activeProfile?.id) return;
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ avatar: newAvatar })
+        .eq('id', activeProfile.id);
+
+      if (!error) {
+        setActiveProfile((prev) => (prev ? { ...prev, avatar: newAvatar } : null));
+      }
+    } catch (err) {
+      console.error('Erro ao atualizar avatar:', err);
+    }
+  }
+
   const now = new Date();
   const dayOfWeek = now.getDay();
   const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
   const isPlaygroundUnlocked = isWeekend || todayCompleted;
-
-  async function handleLogoutAccount() {
-  try {
-    setLoading(true);
-    await supabase.auth.signOut();
-    localStorage.clear();
-    sessionStorage.clear();
-  } catch (err) {
-    console.error('Erro ao sair:', err);
-  } finally {
-    setActiveProfile(null);
-    setSession(null);
-    setView({ name: 'trail' });
-    setLoading(false);
-    window.location.reload();
-  }
-}
 
   function handleSelectModule(m: Module) {
     setView({ name: 'lessons', module: m });
@@ -217,23 +219,15 @@ export default function App() {
         <div className="text-center">
           <div className="text-6xl animate-bounce mb-4">🦁</div>
           <p className="text-slate-500 font-bold mb-2">A carregar o English Kids...</p>
-          <button
-            onClick={() => setLoading(false)}
-            className="text-xs text-indigo-500 underline font-semibold cursor-pointer"
-          >
-            Demorando muito? Clique aqui para tentar entrar
-          </button>
         </div>
       </div>
     );
   }
 
-  // Não autenticado -> Modal de Login / Registro
   if (!session) {
-    return <AuthModal onSuccess={() => setLoading(true)} />;
+    return <AuthModal onSuccess={() => refreshSessionAndData()} />;
   }
 
-  // Sessão iniciada, aguardando criação do perfil
   if (!activeProfile) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-sky-100 via-indigo-50 to-rose-50 flex items-center justify-center p-4">
@@ -253,7 +247,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-sky-50 via-indigo-50 to-rose-50 pb-24">
-      {/* TopBar limpa */}
       <TopBar
         profiles={[activeProfile]}
         activeProfileId={activeProfile.id}
@@ -262,12 +255,9 @@ export default function App() {
       />
 
       <main className="mt-4 max-w-7xl mx-auto px-4">
-        {/* SE FOR A PÁGINA INICIAL (TRAIL): Trilha + Coluna Lateral Compacta */}
         {view.name === 'trail' ? (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-            {/* Coluna Principal */}
             <div className="lg:col-span-8 w-full">
-              {/* Card Destaque do Playground */}
               <div
                 onClick={() => {
                   if (isPlaygroundUnlocked) {
@@ -285,11 +275,7 @@ export default function App() {
                     <span className="text-4xl">{isPlaygroundUnlocked ? '🎪' : '🔒'}</span>
                     <div>
                       <div className="flex items-center gap-2">
-                        <h3
-                          className={`font-black text-lg ${
-                            isPlaygroundUnlocked ? 'text-white' : 'text-slate-700'
-                          }`}
-                        >
+                        <h3 className={`font-black text-lg ${isPlaygroundUnlocked ? 'text-white' : 'text-slate-700'}`}>
                           Parque de Jogos (Treino Livre)
                         </h3>
                         {isWeekend ? (
@@ -324,13 +310,10 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Trilha de Módulos */}
               <ModuleTrail modules={modules} onSelectModule={handleSelectModule} />
             </div>
 
-            {/* Coluna Lateral Compacta: Perfil + Ranking (Aparece SOMENTE na tela principal) */}
             <div className="lg:col-span-4 w-full sticky top-4 space-y-3">
-              {/* Card de Avatar Compacto */}
               <div className="bg-white rounded-2xl p-3 border border-slate-100 shadow-sm flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
                   <button
@@ -363,12 +346,10 @@ export default function App() {
                 </button>
               </div>
 
-              {/* Ranking Top 10 Compacto */}
               <LeaderboardCard currentProfileId={activeProfile.id} />
             </div>
           </div>
         ) : (
-          /* DEMAIS TELAS: Ocupam a tela inteira sem barra lateral */
           <div className="max-w-4xl mx-auto w-full">
             {view.name === 'lessons' && (
               <ModuleLessons
@@ -412,7 +393,6 @@ export default function App() {
         )}
       </main>
 
-      {/* Navegação Inferior Fixa */}
       <nav className="fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-md shadow-[0_-4px_20px_rgba(0,0,0,0.08)] rounded-t-3xl border-t border-slate-100">
         <div className="max-w-md mx-auto flex items-center justify-around px-2 py-2">
           <button
@@ -475,7 +455,6 @@ export default function App() {
         </div>
       </nav>
 
-      {/* Modal de Medalhas / Conquistas */}
       <BadgesModal
         profileId={activeProfile.id}
         profileName={activeProfile.name}
@@ -483,19 +462,14 @@ export default function App() {
         onClose={() => setBadgesOpen(false)}
       />
 
-      {/* Modal de Escolha de Avatar */}
       <AvatarPickerModal
         isOpen={avatarModalOpen}
         onClose={() => setAvatarModalOpen(false)}
         currentAvatar={activeProfile.avatar || '🦁'}
         profileId={activeProfile.id}
-        onAvatarUpdated={(newAvatar) => {
-          setActiveProfile({ ...activeProfile, avatar: newAvatar });
-          loadUserProfile();
-        }}
+        onAvatarUpdated={handleAvatarUpdated}
       />
 
-      {/* Painel Parental */}
       <ParentArea
         open={parentOpen}
         onClose={() => setParentOpen(false)}
