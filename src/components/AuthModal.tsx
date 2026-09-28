@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Lock, Mail, Sparkles, AlertCircle } from 'lucide-react';
+import { Lock, Mail, User, AlertCircle } from 'lucide-react';
 
 interface AuthModalProps {
   onSuccess: () => void;
@@ -8,6 +8,7 @@ interface AuthModalProps {
 
 export default function AuthModal({ onSuccess }: AuthModalProps) {
   const [isSignUp, setIsSignUp] = useState(false);
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -20,12 +21,39 @@ export default function AuthModal({ onSuccess }: AuthModalProps) {
 
     try {
       if (isSignUp) {
-        const { error } = await supabase.auth.signUp({ email, password });
+        const trimmedName = name.trim();
+        if (!trimmedName) {
+          throw new Error('Por favor, introduza o seu nome.');
+        }
+
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              name: trimmedName,
+            },
+          },
+        });
+
         if (error) throw error;
+
+        // Regista ou atualiza o perfil com o nome definido e pontuação inicial a zero
+        if (data?.user) {
+          await supabase.from('profiles').upsert({
+            id: data.user.id,
+            user_id: data.user.id,
+            name: trimmedName,
+            stars: 0,
+            monthly_stars: 0,
+            streak_days: 0,
+          });
+        }
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
       }
+
       onSuccess();
     } catch (err: any) {
       setErrorMessage(err.message || 'Ocorreu um erro na autenticação.');
@@ -43,7 +71,7 @@ export default function AuthModal({ onSuccess }: AuthModalProps) {
           </div>
           <h2 className="text-2xl font-black text-slate-800">English Kids Pro</h2>
           <p className="text-xs text-slate-400 font-semibold mt-1">
-            {isSignUp ? 'Crie uma conta para a sua família' : 'Inicie sessão para aceder às aulas'}
+            {isSignUp ? 'Crie uma conta para começar a jogar' : 'Inicie sessão para aceder às aulas'}
           </p>
         </div>
 
@@ -55,8 +83,27 @@ export default function AuthModal({ onSuccess }: AuthModalProps) {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {isSignUp && (
+            <div>
+              <label className="block text-xs font-extrabold text-slate-600 mb-1">
+                Nome da Criança
+              </label>
+              <div className="relative">
+                <User className="w-4 h-4 absolute left-3.5 top-3.5 text-slate-400" />
+                <input
+                  type="text"
+                  required={isSignUp}
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Como queres ser chamado?"
+                  className="w-full pl-10 pr-4 py-2.5 rounded-2xl border-2 border-slate-200 focus:border-indigo-500 text-sm font-semibold outline-none"
+                />
+              </div>
+            </div>
+          )}
+
           <div>
-            <label className="block text-xs font-extrabold text-slate-600 mb-1">E-mail dos Pais</label>
+            <label className="block text-xs font-extrabold text-slate-600 mb-1">E-mail</label>
             <div className="relative">
               <Mail className="w-4 h-4 absolute left-3.5 top-3.5 text-slate-400" />
               <input
