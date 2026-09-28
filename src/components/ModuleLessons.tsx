@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { ArrowLeft, CheckCircle2, Play, Calendar, Lock, Trophy, Award } from 'lucide-react';
 import type { Module, LessonProgress } from '@/lib/supabase';
 import { supabase, LESSON_DAYS } from '@/lib/supabase';
@@ -25,18 +25,51 @@ export default function ModuleLessons({ module, profileId, onBack, onStartLesson
   const [progress, setProgress] = useState<LessonProgress[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    (async () => {
+  const fetchProgress = useCallback(async () => {
+    try {
+      // 1. Busca tanto por profile_id quanto por user_id
       const { data, error } = await supabase
         .from('lesson_progress')
         .select('*')
-        .eq('profile_id', profileId)
+        .or(`profile_id.eq.${profileId},user_id.eq.${profileId}`)
         .eq('module_id', module.id)
         .order('lesson_day', { ascending: true });
-      if (!error && data) setProgress(data as LessonProgress[]);
+
+      let list: LessonProgress[] = (!error && data) ? (data as LessonProgress[]) : [];
+
+      // 2. Mescla com conclusões locais do localStorage para tolerância a falhas
+      LESSON_DAYS.forEach((d) => {
+        const localKey = `lesson_completed_${profileId}_${module.id}_${d.day}`;
+        if (localStorage.getItem(localKey) === 'true') {
+          const exists = list.find((p) => p.lesson_day === d.day);
+          if (exists) {
+            exists.status = 'completed';
+          } else {
+            list.push({
+              id: `local-${d.day}`,
+              profile_id: profileId,
+              module_id: module.id,
+              lesson_day: d.day,
+              current_step: 4,
+              status: 'completed',
+              completed_at: new Date().toISOString(),
+              created_at: new Date().toISOString(),
+            } as LessonProgress);
+          }
+        }
+      });
+
+      setProgress([...list]);
+    } catch (err) {
+      console.error('Erro ao buscar progresso:', err);
+    } finally {
       setLoading(false);
-    })();
+    }
   }, [profileId, module.id]);
+
+  useEffect(() => {
+    fetchProgress();
+  }, [fetchProgress]);
 
   if (loading) {
     return (
@@ -47,7 +80,10 @@ export default function ModuleLessons({ module, profileId, onBack, onStartLesson
   }
 
   // Verifica se o aluno já concluiu alguma lição hoje
-  const completedToday = progress.some(
+  const todayStr = new Date().toISOString().split('T')[0];
+  const localDaily = localStorage.getItem(`daily_done_${profileId}_${todayStr}`) === 'true';
+
+  const completedToday = localDaily || progress.some(
     (p) => p.status === 'completed' && isSameDay(p.completed_at || p.created_at)
   );
 
@@ -128,7 +164,7 @@ export default function ModuleLessons({ module, profileId, onBack, onStartLesson
           // 1. Anterior precisa estar concluída
           const prevDayDone = d.day === 1 || progress.some((p) => p.lesson_day === d.day - 1 && p.status === 'completed');
           
-          // 2. Se ainda não fez essa aula e já concluiu outra hoje, bloqueia até amanhã
+          // 2. Se ainda não fez essa aula e já concluiu outra hoje, bloqueia até amanhã (regra pedagógica de 1 aula por dia)
           const lockedByDailyLimit = !done && completedToday && !inProgress;
 
           // Aula liberada se a anterior foi feita e não atingiu o limite de 1 por dia
