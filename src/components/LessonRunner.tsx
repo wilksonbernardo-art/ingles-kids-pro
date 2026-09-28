@@ -143,51 +143,72 @@ export default function LessonRunner({
     }
   }
 
-  async function finishLesson(customScoreBonus?: number) {
+async function finishLesson(customScoreBonus?: number) {
     const bonusToAward = customScoreBonus !== undefined ? customScoreBonus : LESSON_BONUS;
+    const todayStr = new Date().toISOString().split('T')[0];
 
-    if (existingProgress?.id) {
-      await supabase
-        .from('lesson_progress')
-        .update({ status: 'completed', completed_at: new Date().toISOString(), current_step: 4 })
-        .eq('id', existingProgress.id);
-    } else {
-      await supabase.from('lesson_progress').upsert(
-        {
-          profile_id: profileId,
-          module_id: module.id,
-          lesson_day: lessonDay,
-          current_step: 4,
-          status: 'completed',
-          completed_at: new Date().toISOString(),
-        },
-        { onConflict: 'profile_id,module_id,lesson_day' }
-      );
+    // 1. GARANTIA LOCAL IMEDIATA (libera os jogos mesmo se o Supabase engasgar)
+    try {
+      localStorage.setItem(`daily_done_${profileId}_${todayStr}`, 'true');
+      localStorage.setItem(`lesson_completed_${profileId}_${module.id}_${lessonDay}`, 'true');
+    } catch (e) {
+      console.warn('Erro ao salvar no localStorage:', e);
     }
 
-    const { data: profileData } = await supabase
-      .from('profiles')
-      .select('streak_days, last_activity_date, stars, monthly_stars')
-      .eq('id', profileId)
-      .single();
+    // 2. TENTAR SALVAR NO SUPABASE (com try/catch individual para não travar a tela)
+    try {
+      if (existingProgress?.id) {
+        await supabase
+          .from('lesson_progress')
+          .update({ status: 'completed', completed_at: new Date().toISOString(), current_step: 4 })
+          .eq('id', existingProgress.id);
+      } else {
+        await supabase.from('lesson_progress').upsert(
+          {
+            profile_id: profileId,
+            module_id: module.id,
+            lesson_day: lessonDay,
+            current_step: 4,
+            status: 'completed',
+            completed_at: new Date().toISOString(),
+          },
+          { onConflict: 'profile_id,module_id,lesson_day' }
+        );
+      }
+    } catch (err) {
+      console.warn('Erro ao salvar lesson_progress:', err);
+    }
 
-    const todayStr = new Date().toISOString().split('T')[0];
-    const newStreak = (profileData?.streak_days || 0) + 1;
+    // 3. ATUALIZAR ESTRELAS E STREAK NO PERFIL
+    try {
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('streak_days, last_activity_date, stars, monthly_stars')
+        .eq('id', profileId)
+        .maybeSingle();
 
-    const newStars = profileStars + bonusToAward;
-    const newMonthlyStars = (profileData?.monthly_stars || 0) + bonusToAward;
+      const newStreak = (profileData?.streak_days || 0) + 1;
+      const newStars = (profileData?.stars || profileStars) + bonusToAward;
+      const newMonthlyStars = (profileData?.monthly_stars || 0) + bonusToAward;
 
-    await supabase
-      .from('profiles')
-      .update({
-        stars: newStars,
-        monthly_stars: newMonthlyStars,
-        streak_days: newStreak,
-        last_activity_date: todayStr,
-      })
-      .eq('id', profileId);
+      await supabase
+        .from('profiles')
+        .update({
+          stars: newStars,
+          monthly_stars: newMonthlyStars,
+          streak_days: newStreak,
+          last_activity_date: todayStr,
+        })
+        .eq('id', profileId);
+    } catch (err) {
+      console.warn('Erro ao atualizar estrelas do perfil:', err);
+    }
 
-    onStarsUpdated();
+    // 4. FEEDBACK VISUAL E TRANSIÇÃO IMEDIATA
+    try {
+      onStarsUpdated();
+    } catch (e) {}
+
     celebrate();
     setLessonComplete(true);
   }

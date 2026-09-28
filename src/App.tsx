@@ -150,24 +150,44 @@ export default function App() {
     };
   }, [fetchProfileForUser, loadModules]);
 
-  // Verificar conclusão do dia
+// Verificar conclusão do dia com suporte a profile_id e fallback local imediato
   const checkTodayProgress = useCallback(async (profileId: string) => {
-    try {
-      const todayStr = new Date().toISOString().split('T')[0];
-      const { data } = await supabase
-        .from('lesson_progress')
-        .select('completed_at, created_at')
-        .eq('user_id', profileId);
+    const todayStr = new Date().toISOString().split('T')[0];
 
-      if (data && data.length > 0) {
-        const doneToday = data.some((item) => {
-          const dt = (item.completed_at || item.created_at || '').split('T')[0];
-          return dt === todayStr;
-        });
-        setTodayCompleted(doneToday);
-      } else {
-        setTodayCompleted(false);
+    // 1. Checagem local imediata (garante que os jogos abrem na hora que os pais aprovam)
+    try {
+      const isDailyLocal = localStorage.getItem(`daily_done_${profileId}_${todayStr}`);
+      if (isDailyLocal === 'true') {
+        setTodayCompleted(true);
+        return;
       }
+    } catch (e) {
+      console.warn('Erro ao ler localStorage:', e);
+    }
+
+    // 2. Consulta resiliente no Supabase (procura por profile_id OU user_id)
+    try {
+      const { data, error } = await supabase
+        .from('lesson_progress')
+        .select('completed_at, created_at, status')
+        .or(`profile_id.eq.${profileId},user_id.eq.${profileId}`);
+
+      if (!error && data && data.length > 0) {
+        const doneToday = data.some((item) => {
+          const isDone = item.status === 'completed' || !!item.completed_at;
+          const dt = (item.completed_at || item.created_at || '').split('T')[0];
+          return isDone && dt === todayStr;
+        });
+
+        if (doneToday) {
+          setTodayCompleted(true);
+          try {
+            localStorage.setItem(`daily_done_${profileId}_${todayStr}`, 'true');
+          } catch {}
+          return;
+        }
+      }
+      setTodayCompleted(false);
     } catch {
       setTodayCompleted(false);
     }
@@ -396,8 +416,9 @@ export default function App() {
                 existingProgress={view.progress}
                 onBack={() => setView({ name: 'lessons', module: view.module })}
                 onComplete={() => {
+                  setTodayCompleted(true); // Força liberação imediata na UI
                   checkTodayProgress(activeProfile.id);
-                  setView({ name: 'lessons', module: view.module });
+                  setView({ name: 'trail' }); // Volta para a trilha onde o Parque de Jogos fica visível
                 }}
                 onStarsUpdated={loadUserProfile}
                 profileStars={activeProfile.stars}
