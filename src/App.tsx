@@ -206,7 +206,12 @@ export default function App() {
     } catch (e) {
       console.error(e);
     }
-    localStorage.clear();
+    // Remove as chaves de autenticação do Supabase sem apagar as lições locais
+    Object.keys(localStorage).forEach((key) => {
+      if (key.startsWith('sb-') || key.includes('auth-token')) {
+        localStorage.removeItem(key);
+      }
+    });
     sessionStorage.clear();
     setSession(null);
     setActiveProfile(null);

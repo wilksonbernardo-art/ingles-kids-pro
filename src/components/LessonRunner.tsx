@@ -155,28 +155,45 @@ async function finishLesson(customScoreBonus?: number) {
       console.warn('Erro ao salvar no localStorage:', e);
     }
 
-    // 2. TENTAR SALVAR NO SUPABASE (com try/catch individual para não travar a tela)
+    // 2. SALVAR NO SUPABASE COM TODOS OS IDENTIFICADORES PREENCHIDOS
     try {
+      const payload = {
+        profile_id: profileId,
+        user_id: profileId, // Preenche ambos com o ID para nunca falhar por campo nulo
+        module_id: String(module.id),
+        lesson_day: Number(lessonDay),
+        current_step: 4,
+        status: 'completed',
+        completed_at: new Date().toISOString(),
+      };
+
+      let saveError = null;
+
       if (existingProgress?.id) {
-        await supabase
+        const { error } = await supabase
           .from('lesson_progress')
-          .update({ status: 'completed', completed_at: new Date().toISOString(), current_step: 4 })
-          .eq('id', existingProgress.id);
-      } else {
-        await supabase.from('lesson_progress').upsert(
-          {
-            profile_id: profileId,
-            module_id: module.id,
-            lesson_day: lessonDay,
-            current_step: 4,
+          .update({
             status: 'completed',
             completed_at: new Date().toISOString(),
-          },
-          { onConflict: 'profile_id,module_id,lesson_day' }
-        );
+            current_step: 4,
+            user_id: profileId,
+          })
+          .eq('id', existingProgress.id);
+        saveError = error;
+      } else {
+        const { error } = await supabase
+          .from('lesson_progress')
+          .upsert(payload, { onConflict: 'profile_id,module_id,lesson_day' });
+        saveError = error;
+      }
+
+      if (saveError) {
+        console.error('Erro detalhado no Supabase ao salvar lesson_progress:', saveError);
+      } else {
+        console.log('Lição salva com sucesso absoluto no Supabase!');
       }
     } catch (err) {
-      console.warn('Erro ao salvar lesson_progress:', err);
+      console.error('Exceção ao salvar lesson_progress:', err);
     }
 
     // 3. ATUALIZAR ESTRELAS E STREAK NO PERFIL
