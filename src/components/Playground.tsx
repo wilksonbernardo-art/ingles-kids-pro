@@ -20,7 +20,6 @@ function WordVisual({ word, size = 'md' }: { word: any; size?: 'sm' | 'md' | 'lg
         className={`${sizeClasses[size].split(' ')[0]} ${sizeClasses[size].split(' ')[1]} object-contain drop-shadow-xs select-none pointer-events-none`}
         loading="lazy"
         onError={(e) => {
-          // Se a imagem falhar por qualquer motivo, oculta e cai no emoji
           (e.currentTarget as HTMLElement).style.display = 'none';
         }}
       />
@@ -232,10 +231,11 @@ export default function Playground({ profileId, onBack, onStarsUpdated, profileS
         <GameSpeedTap key="speed" pool={currentPool} onWin={() => awardBonusStar(2)} />
       )}
       {activeGame === 'builder' && (
-        <GameWordBuilder 
-  pool={allWords.filter(...)} 
-  onWin={handleWin} 
-/>
+        <GameWordBuilder
+          key="builder"
+          pool={currentPool}
+          onWin={() => awardBonusStar(2)}
+        />
       )}
       {activeGame === 'colors' && (
         <GameColorsMatch key="colors" pool={currentPool} onWin={() => awardBonusStar(2)} />
@@ -265,7 +265,7 @@ function GameCard({ emoji, title, desc, color, onClick }: { emoji: string; title
   );
 }
 
-/* ==================== TOP SKY FLIGHT (PALAVRA CENTRALIZADA NO TOPO DO JOGO) ==================== */
+/* ==================== TOP SKY FLIGHT ==================== */
 const SKY_W = 380;
 const SKY_H = 430;
 
@@ -383,7 +383,6 @@ function GameTopRacer({
 
       const state = engineRef.current;
 
-      // ==================== FÍSICA ====================
       if (state.active) {
         state.cloudOffset = (state.cloudOffset + state.speed * 4) % 1;
 
@@ -433,7 +432,6 @@ function GameTopRacer({
         }
       }
 
-      // ==================== RENDERIZAÇÃO ====================
       const skyGrad = ctx.createLinearGradient(0, 0, 0, SKY_H);
       skyGrad.addColorStop(0, '#0284c7');
       skyGrad.addColorStop(0.5, '#38bdf8');
@@ -441,13 +439,11 @@ function GameTopRacer({
       ctx.fillStyle = skyGrad;
       ctx.fillRect(0, 0, SKY_W, SKY_H);
 
-      // Sol suave
       ctx.fillStyle = '#fef08a';
       ctx.beginPath();
       ctx.arc(SKY_W / 2, 75, 30, 0, Math.PI * 2);
       ctx.fill();
 
-      // Nuvens decorativas de fundo
       const numLines = 8;
       for (let i = 0; i < numLines; i++) {
         const segZ = (i / numLines + state.cloudOffset) % 1;
@@ -471,7 +467,6 @@ function GameTopRacer({
         ctx.stroke();
       }
 
-      // Nuvens das Palavras (Descem pelas laterais)
       if (state.progressZ < 1.05) {
         const z = state.progressZ;
         const signY = 85 + (SKY_H - 150) * z;
@@ -484,7 +479,6 @@ function GameTopRacer({
         const signH = 50 + 15 * z;
         const fontSize = Math.floor(14 + 3 * z);
 
-        // Nuvem Esquerda
         ctx.save();
         ctx.shadowColor = 'rgba(0, 0, 0, 0.12)';
         ctx.shadowBlur = 8;
@@ -503,7 +497,6 @@ function GameTopRacer({
         ctx.fillText(state.leftWord, leftX, signY);
         ctx.restore();
 
-        // Nuvem Direita
         ctx.save();
         ctx.shadowColor = 'rgba(0, 0, 0, 0.12)';
         ctx.shadowBlur = 8;
@@ -523,7 +516,6 @@ function GameTopRacer({
         ctx.restore();
       }
 
-      // Passarinho de costas
       const birdX = SKY_W / 2 + state.playerX;
       const birdY = SKY_H - 65;
 
@@ -581,13 +573,11 @@ function GameTopRacer({
 
   return (
     <div className="bg-sky-50/70 border-2 border-sky-200 rounded-3xl p-3 sm:p-5 md:p-6 text-center w-full max-w-md mx-auto shadow-sm overflow-hidden">
-      {/* Topo: Placar e Vidas */}
       <div className="flex items-center justify-between mb-3 px-1">
         <span className="bg-sky-200 text-sky-950 text-xs font-black px-3 py-1 rounded-full uppercase tracking-wider">
           ☁️ Top Sky Flight
         </span>
 
-        {/* Vidas */}
         <div className="flex items-center gap-1 bg-white border border-rose-200 px-3 py-1 rounded-full shadow-2xs">
           {Array.from({ length: 3 }).map((_, i) => (
             <Heart
@@ -600,7 +590,6 @@ function GameTopRacer({
         </div>
       </div>
 
-      {/* Placar de Pontos e Recorde */}
       <div className="flex items-center justify-between px-1 mb-2">
         <span className="text-xs font-extrabold text-slate-600 bg-white border border-slate-200 px-3 py-1 rounded-full shadow-2xs">
           Pontos: <strong className="text-sky-600 text-sm">{score}</strong>
@@ -611,7 +600,6 @@ function GameTopRacer({
         </span>
       </div>
 
-      {/* TELA DE VOO NAS NUVENS (Com toque direto na tela) */}
       <div 
         onClick={(e) => {
           const rect = e.currentTarget.getBoundingClientRect();
@@ -631,7 +619,6 @@ function GameTopRacer({
           className="w-full h-full block object-cover"
         />
 
-        {/* Palavra de referência centralizada no topo dentro do jogo */}
         <div className="absolute top-2.5 sm:top-3 left-1/2 -translate-x-1/2 z-10 w-[92%] max-w-[320px]">
           <div className="bg-white/95 backdrop-blur-md border-2 border-sky-300 rounded-2xl py-1.5 sm:py-2 px-2.5 sm:px-3 shadow-md flex items-center justify-between gap-1.5 sm:gap-2">
             <div className="flex items-center gap-2 min-w-0">
@@ -655,7 +642,6 @@ function GameTopRacer({
           </div>
         </div>
 
-        {/* Modal de Fim de Jogo */}
         {gameOver && (
           <div className="absolute inset-0 bg-slate-950/85 backdrop-blur-xs flex flex-col items-center justify-center p-4 z-20 animate-in zoom-in-95">
             <span className="text-5xl mb-2 animate-bounce">🐥</span>
@@ -677,7 +663,6 @@ function GameTopRacer({
         )}
       </div>
 
-      {/* CONTROLES: NUVEM ESQUERDA / DIREITA */}
       <div className="grid grid-cols-2 gap-2 sm:gap-3 w-full max-w-[380px] mx-auto mt-3">
         <button
           type="button"
@@ -716,7 +701,6 @@ function GameWordSnake({ pool = [], onWin }: { pool: Word[]; onWin: () => void }
   const [gameWon, setGameWon] = useState(false);
   const [gameOver, setGameOver] = useState(false);
 
-  // Referência para calcular o gesto de deslize (swipe)
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
 
   const stateRef = useRef({
@@ -796,7 +780,6 @@ function GameWordSnake({ pool = [], onWin }: { pool: Word[]; onWin: () => void }
     startWord();
   }, []);
 
-  // Controlos por teclado no computador
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const { dir, active } = stateRef.current;
@@ -817,7 +800,6 @@ function GameWordSnake({ pool = [], onWin }: { pool: Word[]; onWin: () => void }
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Manipuladores de deslize com o dedo (Swipe) no telemóvel
   const handleTouchStart = (e: React.TouchEvent) => {
     const touch = e.touches[0];
     touchStartRef.current = { x: touch.clientX, y: touch.clientY };
@@ -830,24 +812,22 @@ function GameWordSnake({ pool = [], onWin }: { pool: Word[]; onWin: () => void }
     const diffY = touch.clientY - touchStartRef.current.y;
     touchStartRef.current = null;
 
-    const minDistance = 20; // Sensibilidade do deslize
+    const minDistance = 20;
 
     if (Math.abs(diffX) > Math.abs(diffY)) {
-      // Deslize Horizontal
       if (Math.abs(diffX) > minDistance) {
         if (diffX > 0 && stateRef.current.dir.x === 0) {
-          stateRef.current.dir = { x: 1, y: 0 }; // Direita
+          stateRef.current.dir = { x: 1, y: 0 };
         } else if (diffX < 0 && stateRef.current.dir.x === 0) {
-          stateRef.current.dir = { x: -1, y: 0 }; // Esquerda
+          stateRef.current.dir = { x: -1, y: 0 };
         }
       }
     } else {
-      // Deslize Vertical
       if (Math.abs(diffY) > minDistance) {
         if (diffY > 0 && stateRef.current.dir.y === 0) {
-          stateRef.current.dir = { x: 0, y: 1 }; // Baixo
+          stateRef.current.dir = { x: 0, y: 1 };
         } else if (diffY < 0 && stateRef.current.dir.y === 0) {
-          stateRef.current.dir = { x: 0, y: -1 }; // Cima
+          stateRef.current.dir = { x: 0, y: -1 };
         }
       }
     }
@@ -1019,7 +999,6 @@ function GameWordSnake({ pool = [], onWin }: { pool: Word[]; onWin: () => void }
         </div>
       </div>
 
-      {/* Card da Palavra de Referência com Ilustração Nítida */}
       <div className="bg-white rounded-2xl p-2.5 sm:p-3.5 border border-emerald-100 shadow-xs mb-3 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <WordVisual word={targetWord} size="md" />
@@ -1060,7 +1039,6 @@ function GameWordSnake({ pool = [], onWin }: { pool: Word[]; onWin: () => void }
         })}
       </div>
 
-      {/* Tabuleiro com Suporte a Deslize (Swipe) e Bloqueio de Scroll Indesejado */}
       <div 
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
@@ -1110,7 +1088,6 @@ function GameWordSnake({ pool = [], onWin }: { pool: Word[]; onWin: () => void }
         Dica: Deslize o dedo no ecrã para mudar de direção!
       </p>
 
-      {/* Controles de Direção Virtuais (Alternativa ao Swipe) */}
       <div className="flex flex-col items-center gap-1.5 max-w-[200px] mx-auto">
         <button
           type="button"
@@ -1471,7 +1448,7 @@ function GameSpeedTap({ pool, onWin }: { pool: Word[]; onWin: () => void }) {
   );
 }
 
-/* ==================== 5. WORD BUILDER (COM BOTÃO DE ÁUDIO VISÍVEL) ==================== */
+/* ==================== 5. WORD BUILDER (DESIGN IDÊNTICO AO DA IMAGEM COM BOTÃO DE ÁUDIO) ==================== */
 function GameWordBuilder({ pool = [], onWin }: { pool: Word[]; onWin: () => void }) {
   const poolRef = useRef<Word[]>([]);
   if (poolRef.current.length === 0 && pool && pool.length > 0) {
@@ -1544,41 +1521,44 @@ function GameWordBuilder({ pool = [], onWin }: { pool: Word[]; onWin: () => void
   const targetChars = target.word_en.toUpperCase().replace(/[^A-Z]/g, '').split('');
 
   return (
-    <div className="w-full max-w-md mx-auto bg-teal-50/70 border-2 border-teal-200 rounded-3xl p-5 sm:p-7 text-center overflow-hidden select-none shadow-xs">
-      <span className="bg-teal-200 text-teal-800 text-xs font-black px-3.5 py-1 rounded-full uppercase tracking-wider">
-        🔤 Word Builder
-      </span>
+    <div className="w-full max-w-lg mx-auto bg-emerald-50/20 border-2 border-teal-300 rounded-[36px] p-6 sm:p-8 text-center overflow-hidden select-none shadow-sm">
+      {/* Badge WORD BUILDER */}
+      <div className="flex justify-center mb-2">
+        <span className="bg-teal-200 text-teal-800 text-[11px] font-black px-3.5 py-1 rounded-full uppercase tracking-wider">
+          🔤 WORD BUILDER
+        </span>
+      </div>
 
       {/* Ícone / Emoji */}
-      <div className="text-6xl sm:text-7xl my-3 select-none drop-shadow-xs">
+      <div className="text-6xl sm:text-7xl my-2 select-none">
         {target.emoji || '⭐'}
       </div>
 
       {/* Palavra em Português */}
-      <h3 className="text-lg sm:text-xl font-black text-slate-800 mb-2">
+      <h3 className="text-xl sm:text-2xl font-black text-slate-800 mb-2">
         {target.word_pt}
       </h3>
 
-      {/* BOTÃO DESTACADO PARA OUVIR / REPETIR A PRONÚNCIA EM INGLÊS */}
+      {/* Botão de Repetir a Palavra em Inglês */}
       <div className="flex justify-center mb-4">
         <button
           type="button"
           onClick={() => speakWord(target.word_en)}
-          className="inline-flex items-center gap-2 bg-teal-500 hover:bg-teal-600 text-white font-extrabold text-xs px-4 py-2.5 rounded-2xl shadow-sm hover:scale-105 active:scale-95 transition-all cursor-pointer ring-2 ring-teal-200"
+          className="inline-flex items-center gap-2 bg-teal-500 hover:bg-teal-600 text-white font-extrabold text-xs px-4 py-2 rounded-2xl shadow-sm hover:scale-105 active:scale-95 transition-all cursor-pointer"
         >
-          <Volume2 className="w-4 h-4 animate-bounce" />
+          <Volume2 className="w-4 h-4" />
           <span>Ouvir em Inglês 🔊</span>
         </button>
       </div>
 
-      {/* Caixas de Montagem Fluidas */}
-      <div className="flex justify-center gap-1.5 sm:gap-2 my-4 flex-wrap">
+      {/* Caixas de Montagem */}
+      <div className="flex justify-center gap-1.5 sm:gap-2 my-4 flex-wrap max-w-md mx-auto">
         {targetChars.map((_, i) => {
           const char = picked[i] !== undefined ? scramble[picked[i]]?.char : '';
           return (
             <div
               key={i}
-              className="w-10 h-12 sm:w-12 sm:h-14 rounded-2xl border-2 border-teal-500 bg-white flex items-center justify-center font-black text-lg sm:text-2xl text-teal-800 shadow-xs"
+              className="w-11 h-13 sm:w-13 sm:h-15 rounded-2xl border-2 border-teal-400 bg-white flex items-center justify-center font-black text-xl sm:text-2xl text-teal-800 shadow-xs"
             >
               {char || ''}
             </div>
@@ -1586,8 +1566,8 @@ function GameWordBuilder({ pool = [], onWin }: { pool: Word[]; onWin: () => void
         })}
       </div>
 
-      {/* Teclado das Letras para Escolher */}
-      <div className="flex justify-center gap-1.5 sm:gap-2.5 flex-wrap my-3">
+      {/* Teclado com Letras para Escolher */}
+      <div className="flex justify-center gap-1.5 sm:gap-2.5 flex-wrap my-4 max-w-md mx-auto">
         {scramble.map((item, idx) => {
           const used = picked.includes(idx);
           return (
@@ -1596,9 +1576,9 @@ function GameWordBuilder({ pool = [], onWin }: { pool: Word[]; onWin: () => void
               type="button"
               onClick={() => handlePick(idx)}
               disabled={used || isLocked}
-              className={`w-11 h-11 sm:w-13 sm:h-13 rounded-2xl font-black text-base sm:text-xl border-2 transition-all ${
+              className={`w-11 h-11 sm:w-13 sm:h-13 rounded-2xl font-black text-lg sm:text-xl border-2 transition-all ${
                 used
-                  ? 'border-slate-100 bg-slate-100 text-slate-300 opacity-30 cursor-not-allowed'
+                  ? 'border-slate-100 bg-slate-100 text-slate-300 opacity-25 cursor-not-allowed'
                   : 'border-teal-300 bg-white text-teal-800 shadow-sm hover:border-teal-500 hover:scale-105 active:scale-95 cursor-pointer'
               }`}
             >
@@ -1734,7 +1714,6 @@ function GameShadowHunter({ pool, onWin }: { pool: Word[]; onWin: () => void }) 
         <Volume2 className="w-3.5 h-3.5" /> Ouvir a dica em inglês
       </button>
 
-      {/* Responsivo: 2 colunas no celular e 4 no computador/tablet */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3 w-full">
         {options.map((opt) => (
           <button
