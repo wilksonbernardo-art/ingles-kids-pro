@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Map, Home, Award, LogOut, Sparkles } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import type { Profile, Module, LessonProgress } from '@/lib/supabase';
@@ -32,6 +32,9 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [todayCompleted, setTodayCompleted] = useState(false);
 
+  // Evita chamadas concorrentes duplicadas ao carregar perfil
+  const isFetchingProfile = useRef(false);
+
   // Carregar módulos com tolerância a falhas
   const loadModules = useCallback(async () => {
     try {
@@ -50,6 +53,9 @@ export default function App() {
 
   // Buscar ou criar perfil do usuário logado
   const fetchProfileForUser = useCallback(async (userId: string, userMeta?: any) => {
+    if (isFetchingProfile.current) return null;
+    isFetchingProfile.current = true;
+
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -89,6 +95,8 @@ export default function App() {
       }
     } catch (err) {
       console.error('Exceção ao buscar/criar perfil:', err);
+    } finally {
+      isFetchingProfile.current = false;
     }
     return null;
   }, []);
@@ -98,7 +106,7 @@ export default function App() {
     await fetchProfileForUser(session.user.id, session.user.user_metadata);
   }, [session, fetchProfileForUser]);
 
-  // Inicialização com garantia de liberação do loading
+  // Inicialização resiliente e blindada contra travamento no F5
   useEffect(() => {
     let isMounted = true;
 
@@ -126,13 +134,17 @@ export default function App() {
 
     initSession();
 
-    // Trava de segurança: nunca deixa a tela presa em loading por mais de 2.5s
-    const timeout = setTimeout(() => {
+    // Timeout de emergência: destrava a tela de loading em no máximo 1.8 segundos
+    const emergencyUnlock = setTimeout(() => {
       if (isMounted) setLoading(false);
-    }, 2500);
+    }, 1800);
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
       if (!isMounted) return;
+
+      // Ignora repetição inicial pois initSession já cuidou
+      if (event === 'INITIAL_SESSION') return;
+
       setSession(newSession);
 
       if (newSession?.user) {
@@ -145,16 +157,16 @@ export default function App() {
 
     return () => {
       isMounted = false;
-      clearTimeout(timeout);
+      clearTimeout(emergencyUnlock);
       subscription.unsubscribe();
     };
   }, [fetchProfileForUser, loadModules]);
 
-// Verificar conclusão do dia com suporte a profile_id e fallback local imediato
+  // Verificar conclusão do dia com suporte a profile_id e fallback local imediato
   const checkTodayProgress = useCallback(async (profileId: string) => {
     const todayStr = new Date().toISOString().split('T')[0];
 
-    // 1. Checagem local imediata (garante que os jogos abrem na hora que os pais aprovam)
+    // 1. Checagem local imediata
     try {
       const isDailyLocal = localStorage.getItem(`daily_done_${profileId}_${todayStr}`);
       if (isDailyLocal === 'true') {
@@ -165,7 +177,7 @@ export default function App() {
       console.warn('Erro ao ler localStorage:', e);
     }
 
-    // 2. Consulta resiliente no Supabase (procura por profile_id OU user_id)
+    // 2. Consulta resiliente no Supabase
     try {
       const { data, error } = await supabase
         .from('lesson_progress')
@@ -199,14 +211,13 @@ export default function App() {
     }
   }, [activeProfile?.id, checkTodayProgress]);
 
-  // Sair de forma imediata e definitiva
+  // Sair de forma imediata e limpa
   async function handleLogoutAccount() {
     try {
       await supabase.auth.signOut();
     } catch (e) {
       console.error(e);
     }
-    // Remove as chaves de autenticação do Supabase sem apagar as lições locais
     Object.keys(localStorage).forEach((key) => {
       if (key.startsWith('sb-') || key.includes('auth-token')) {
         localStorage.removeItem(key);
@@ -222,10 +233,8 @@ export default function App() {
   // Atualizar Avatar local e remotamente
   async function handleAvatarUpdated(newAvatar: string) {
     if (!activeProfile) return;
-    // 1. Atualiza imediatamente na tela
     setActiveProfile({ ...activeProfile, avatar: newAvatar });
 
-    // 2. Salva no banco de dados
     try {
       await supabase
         .from('profiles')
@@ -251,7 +260,7 @@ export default function App() {
     }
   }
 
-  // Se estiver carregando pela primeira vez
+  // Se estiver carregando inicialmente
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-sky-100 via-indigo-50 to-rose-50 flex items-center justify-center p-4">
@@ -299,7 +308,8 @@ export default function App() {
   }
 
   return (
-<div className="min-h-screen bg-gradient-to-br from-sky-50 via-indigo-50 to-rose-50 pb-32 sm:pb-24">      <TopBar
+    <div className="min-h-screen bg-gradient-to-br from-sky-50 via-indigo-50 to-rose-50 pb-32 sm:pb-24">
+      <TopBar
         profiles={[activeProfile]}
         activeProfileId={activeProfile.id}
         onSelectProfile={() => {}}
@@ -421,9 +431,9 @@ export default function App() {
                 existingProgress={view.progress}
                 onBack={() => setView({ name: 'lessons', module: view.module })}
                 onComplete={() => {
-                  setTodayCompleted(true); // Força liberação imediata na UI
+                  setTodayCompleted(true);
                   checkTodayProgress(activeProfile.id);
-                  setView({ name: 'trail' }); // Volta para a trilha onde o Parque de Jogos fica visível
+                  setView({ name: 'trail' });
                 }}
                 onStarsUpdated={loadUserProfile}
                 profileStars={activeProfile.stars}
