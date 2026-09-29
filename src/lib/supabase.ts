@@ -4,7 +4,11 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: { persistSession: false },
+  auth: {
+    persistSession: true, // Mantém a sessão salva no navegador ao dar F5
+    autoRefreshToken: true, // Renova os tokens de acesso em segundo plano
+    detectSessionInUrl: true,
+  },
 });
 
 export type Profile = {
