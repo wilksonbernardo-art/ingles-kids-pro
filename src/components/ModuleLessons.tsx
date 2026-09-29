@@ -27,7 +27,7 @@ export default function ModuleLessons({ module, profileId, onBack, onStartLesson
 
   const fetchProgress = useCallback(async () => {
     try {
-      // 1. Busca no Supabase
+      // 1. Busca tanto por profile_id quanto por user_id
       const { data, error } = await supabase
         .from('lesson_progress')
         .select('*')
@@ -37,7 +37,7 @@ export default function ModuleLessons({ module, profileId, onBack, onStartLesson
 
       let list: LessonProgress[] = (!error && data) ? (data as LessonProgress[]) : [];
 
-      // 2. Mescla com conclusões locais do localStorage sem mascarar a data original
+      // 2. Mescla com conclusões locais do localStorage para tolerância a falhas
       LESSON_DAYS.forEach((d) => {
         const localKey = `lesson_completed_${profileId}_${module.id}_${d.day}`;
         const localDateKey = `lesson_completed_at_${profileId}_${module.id}_${d.day}`;
@@ -58,7 +58,6 @@ export default function ModuleLessons({ module, profileId, onBack, onStartLesson
               lesson_day: d.day,
               current_step: 4,
               status: 'completed',
-              // Se não tiver registro de data salva, assume ontem para não travar a aula de hoje
               completed_at: localDate || new Date(Date.now() - 86400000).toISOString(),
               created_at: localDate || new Date(Date.now() - 86400000).toISOString(),
             } as LessonProgress);
@@ -86,16 +85,16 @@ export default function ModuleLessons({ module, profileId, onBack, onStartLesson
     );
   }
 
-  // Verifica se o aluno já concluiu alguma lição HOJE
-  const todayStr = new Date().toISOString().split('T')[0];
-  const localDailyDone = localStorage.getItem(`daily_done_${profileId}_${todayStr}`) === 'true';
+  // Identifica o dia mais avançado que já foi concluído
+  const maxCompletedDay = progress
+    .filter((p) => p.status === 'completed')
+    .reduce((max, p) => (p.lesson_day > max ? p.lesson_day : max), 0);
 
-  // Só conta como concluída hoje se a data de conclusão for estritamente hoje
-  const completedToday = localDailyDone || progress.some((p) => {
-    if (p.status !== 'completed') return false;
-    const dateToCheck = p.completed_at || p.created_at;
-    return isSameDay(dateToCheck);
-  });
+  // Verifica se a última lição concluída foi feita especificamente HOJE
+  const lastCompletedLesson = progress.find(
+    (p) => p.lesson_day === maxCompletedDay && p.status === 'completed'
+  );
+  const completedToday = lastCompletedLesson ? isSameDay(lastCompletedLesson.completed_at) : false;
 
   // Contagem das 5 aulas concluídas
   const completedDaysCount = progress.filter(
@@ -117,8 +116,8 @@ export default function ModuleLessons({ module, profileId, onBack, onStartLesson
       </div>
 
       <div className="text-center mb-6">
-        <div className="text-5xl mb-2">{module.emoji || module.icon || '🌟'}</div>
-        <h2 className="text-2xl font-extrabold text-gray-800">{module.title || module.title_pt}</h2>
+        <div className="text-5xl mb-2">{module.emoji || '🌟'}</div>
+        <h2 className="text-2xl font-extrabold text-gray-800">{module.title_pt || module.title_en}</h2>
         <p className="text-gray-400 font-bold text-sm">{module.title_en}</p>
         
         <div className="flex items-center justify-center gap-3 mt-3 flex-wrap">
@@ -170,13 +169,13 @@ export default function ModuleLessons({ module, profileId, onBack, onStartLesson
           const done = dayProgress?.status === 'completed';
           const inProgress = dayProgress?.status === 'in_progress';
 
-          // 1. Anterior precisa estar concluída
+          // 1. A aula anterior precisa de estar concluída
           const prevDayDone = d.day === 1 || progress.some((p) => p.lesson_day === d.day - 1 && p.status === 'completed');
           
-          // 2. Trava pedagógica: se já concluiu uma aula hoje, bloqueia as próximas não iniciadas
-          const lockedByDailyLimit = !done && completedToday && !inProgress;
+          // 2. Só bloqueia por limite diário a lição imediatamente a seguir se a anterior foi terminada HOJE
+          const lockedByDailyLimit = !done && !inProgress && d.day > 1 && d.day === maxCompletedDay + 1 && completedToday;
 
-          // Aula liberada se a anterior foi concluída e não há bloqueio diário
+          // Aula liberada
           const isUnlocked = done || inProgress || (prevDayDone && !lockedByDailyLimit);
 
           return (
