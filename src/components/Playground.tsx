@@ -1471,7 +1471,7 @@ function GameSpeedTap({ pool, onWin }: { pool: Word[]; onWin: () => void }) {
   );
 }
 
-/* ==================== 5. WORD BUILDER (COM BOTÃO DE REPETIR ÁUDIO) ==================== */
+/* ==================== 5. WORD BUILDER (COM BOTÃO DE ÁUDIO VISÍVEL) ==================== */
 function GameWordBuilder({ pool = [], onWin }: { pool: Word[]; onWin: () => void }) {
   const poolRef = useRef<Word[]>([]);
   if (poolRef.current.length === 0 && pool && pool.length > 0) {
@@ -1544,35 +1544,41 @@ function GameWordBuilder({ pool = [], onWin }: { pool: Word[]; onWin: () => void
   const targetChars = target.word_en.toUpperCase().replace(/[^A-Z]/g, '').split('');
 
   return (
-    <div className="w-full max-w-md mx-auto bg-teal-50 border-2 border-teal-200 rounded-3xl p-4 sm:p-6 text-center overflow-hidden select-none">
-      <span className="bg-teal-200 text-teal-800 text-xs font-black px-3 py-1 rounded-full uppercase tracking-wider">
+    <div className="w-full max-w-md mx-auto bg-teal-50/70 border-2 border-teal-200 rounded-3xl p-5 sm:p-7 text-center overflow-hidden select-none shadow-xs">
+      <span className="bg-teal-200 text-teal-800 text-xs font-black px-3.5 py-1 rounded-full uppercase tracking-wider">
         🔤 Word Builder
       </span>
 
-      <div className="text-5xl sm:text-6xl my-2 select-none">{target.emoji || '⭐'}</div>
-      <h3 className="text-base sm:text-lg font-black text-slate-800">{target.word_pt}</h3>
+      {/* Ícone / Emoji */}
+      <div className="text-6xl sm:text-7xl my-3 select-none drop-shadow-xs">
+        {target.emoji || '⭐'}
+      </div>
 
-      {/* Botão de Repetir a Pronúncia em Inglês */}
-      <div className="my-2.5">
+      {/* Palavra em Português */}
+      <h3 className="text-lg sm:text-xl font-black text-slate-800 mb-2">
+        {target.word_pt}
+      </h3>
+
+      {/* BOTÃO DESTACADO PARA OUVIR / REPETIR A PRONÚNCIA EM INGLÊS */}
+      <div className="flex justify-center mb-4">
         <button
           type="button"
           onClick={() => speakWord(target.word_en)}
-          className="inline-flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white font-extrabold text-xs px-4 py-2 rounded-2xl shadow-sm hover:scale-105 active:scale-95 transition-all cursor-pointer"
-          title="Ouvir pronúncia novamente"
+          className="inline-flex items-center gap-2 bg-teal-500 hover:bg-teal-600 text-white font-extrabold text-xs px-4 py-2.5 rounded-2xl shadow-sm hover:scale-105 active:scale-95 transition-all cursor-pointer ring-2 ring-teal-200"
         >
-          <Volume2 className="w-4 h-4 animate-pulse" />
-          <span>Ouvir em Inglês</span>
+          <Volume2 className="w-4 h-4 animate-bounce" />
+          <span>Ouvir em Inglês 🔊</span>
         </button>
       </div>
 
-      {/* Caixas de Montagem */}
+      {/* Caixas de Montagem Fluidas */}
       <div className="flex justify-center gap-1.5 sm:gap-2 my-4 flex-wrap">
         {targetChars.map((_, i) => {
           const char = picked[i] !== undefined ? scramble[picked[i]]?.char : '';
           return (
             <div
               key={i}
-              className="w-10 h-11 sm:w-12 sm:h-13 rounded-xl border-2 border-teal-500 bg-white flex items-center justify-center font-black text-base sm:text-xl text-teal-700 shadow-xs"
+              className="w-10 h-12 sm:w-12 sm:h-14 rounded-2xl border-2 border-teal-500 bg-white flex items-center justify-center font-black text-lg sm:text-2xl text-teal-800 shadow-xs"
             >
               {char || ''}
             </div>
@@ -1580,8 +1586,8 @@ function GameWordBuilder({ pool = [], onWin }: { pool: Word[]; onWin: () => void
         })}
       </div>
 
-      {/* Letras para Escolher */}
-      <div className="flex justify-center gap-1.5 sm:gap-2 flex-wrap mb-2">
+      {/* Teclado das Letras para Escolher */}
+      <div className="flex justify-center gap-1.5 sm:gap-2.5 flex-wrap my-3">
         {scramble.map((item, idx) => {
           const used = picked.includes(idx);
           return (
@@ -1590,10 +1596,10 @@ function GameWordBuilder({ pool = [], onWin }: { pool: Word[]; onWin: () => void
               type="button"
               onClick={() => handlePick(idx)}
               disabled={used || isLocked}
-              className={`w-11 h-11 sm:w-12 sm:h-12 rounded-2xl font-black text-base sm:text-lg border-2 transition-all ${
+              className={`w-11 h-11 sm:w-13 sm:h-13 rounded-2xl font-black text-base sm:text-xl border-2 transition-all ${
                 used
-                  ? 'border-slate-100 bg-slate-100 text-slate-300 opacity-40 cursor-not-allowed'
-                  : 'border-teal-300 bg-white text-teal-800 shadow-sm hover:border-teal-500 active:scale-95 cursor-pointer'
+                  ? 'border-slate-100 bg-slate-100 text-slate-300 opacity-30 cursor-not-allowed'
+                  : 'border-teal-300 bg-white text-teal-800 shadow-sm hover:border-teal-500 hover:scale-105 active:scale-95 cursor-pointer'
               }`}
             >
               {item.char}
@@ -1602,7 +1608,8 @@ function GameWordBuilder({ pool = [], onWin }: { pool: Word[]; onWin: () => void
         })}
       </div>
 
-      <div className="mt-3">
+      {/* Botão de Limpar */}
+      <div className="mt-4">
         <button
           type="button"
           onClick={() => {
