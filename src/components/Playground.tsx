@@ -1471,9 +1471,8 @@ function GameSpeedTap({ pool, onWin }: { pool: Word[]; onWin: () => void }) {
   );
 }
 
-/* ==================== 5. WORD BUILDER (BLINDADO CONTRA LOOPS) ==================== */
+/* ==================== 5. WORD BUILDER (COM BOTÃO DE REPETIR ÁUDIO) ==================== */
 function GameWordBuilder({ pool = [], onWin }: { pool: Word[]; onWin: () => void }) {
-  // Congela as palavras válidas em uma ref para nunca mais mudar durante a partida
   const poolRef = useRef<Word[]>([]);
   if (poolRef.current.length === 0 && pool && pool.length > 0) {
     poolRef.current = pool.filter((w) => w && w.word_en && w.word_en.trim().length >= 3);
@@ -1502,9 +1501,8 @@ function GameWordBuilder({ pool = [], onWin }: { pool: Word[]; onWin: () => void
     setScramble(letters.map((char, id) => ({ id, char })).sort(() => Math.random() - 0.5));
 
     speakWord(chosen.word_en);
-  }, []); // Sem dependências dinâmicas: função 100% estável
+  }, []);
 
-  // Inicia APENAS uma única vez ao montar na tela
   useEffect(() => {
     if (!isStartedRef.current) {
       isStartedRef.current = true;
@@ -1551,8 +1549,21 @@ function GameWordBuilder({ pool = [], onWin }: { pool: Word[]; onWin: () => void
         🔤 Word Builder
       </span>
 
-      <div className="text-5xl sm:text-6xl my-2 sm:my-3 select-none">{target.emoji || '⭐'}</div>
+      <div className="text-5xl sm:text-6xl my-2 select-none">{target.emoji || '⭐'}</div>
       <h3 className="text-base sm:text-lg font-black text-slate-800">{target.word_pt}</h3>
+
+      {/* Botão de Repetir a Pronúncia em Inglês */}
+      <div className="my-2.5">
+        <button
+          type="button"
+          onClick={() => speakWord(target.word_en)}
+          className="inline-flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white font-extrabold text-xs px-4 py-2 rounded-2xl shadow-sm hover:scale-105 active:scale-95 transition-all cursor-pointer"
+          title="Ouvir pronúncia novamente"
+        >
+          <Volume2 className="w-4 h-4 animate-pulse" />
+          <span>Ouvir em Inglês</span>
+        </button>
+      </div>
 
       {/* Caixas de Montagem */}
       <div className="flex justify-center gap-1.5 sm:gap-2 my-4 flex-wrap">
