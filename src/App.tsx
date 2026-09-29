@@ -32,10 +32,9 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [todayCompleted, setTodayCompleted] = useState(false);
 
-  // Evita buscas concorrentes duplicadas
   const isFetchingProfile = useRef(false);
 
-  // Carregar módulos com tolerância a falhas
+  // Carregar módulos
   const loadModules = useCallback(async () => {
     try {
       const { data, error } = await supabase
@@ -51,14 +50,13 @@ export default function App() {
     }
   }, []);
 
-  // Buscar perfil com resiliência total (busca por id OU user_id e possui fallback de emergência)
+  // Buscar perfil existente no banco
   const fetchProfileForUser = useCallback(async (userId: string, userMeta?: any) => {
     if (isFetchingProfile.current) return null;
     isFetchingProfile.current = true;
 
     try {
-      // 1. Tenta buscar pelo id ou user_id
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('profiles')
         .select('*')
         .or(`id.eq.${userId},user_id.eq.${userId}`)
@@ -67,17 +65,10 @@ export default function App() {
 
       if (data) {
         setActiveProfile(data as Profile);
-        try {
-          localStorage.setItem(`cached_profile_${userId}`, JSON.stringify(data));
-        } catch {}
         return data as Profile;
       }
 
-      if (error && error.code !== 'PGRST116') {
-        console.error('Erro ao ler perfil:', error);
-      }
-
-      // 2. Tenta pegar qualquer perfil existente para não bloquear o acesso
+      // Se não achou com esse id, busca o primeiro perfil que existir no banco
       const { data: anyProfile } = await supabase
         .from('profiles')
         .select('*')
@@ -88,45 +79,12 @@ export default function App() {
         setActiveProfile(anyProfile as Profile);
         return anyProfile as Profile;
       }
-
-      // 3. Se a tabela estiver vazia, cria o primeiro perfil
-      const defaultName =
-        userMeta?.name ||
-        userMeta?.email?.split('@')[0] ||
-        'Aventureiro';
-
-      const { data: newProfile, error: insertError } = await supabase
-        .from('profiles')
-        .insert({
-          id: userId,
-          user_id: userId,
-          name: defaultName,
-          avatar: '🦁',
-          stars: 0,
-        })
-        .select()
-        .single();
-
-      if (!insertError && newProfile) {
-        setActiveProfile(newProfile as Profile);
-        return newProfile as Profile;
-      }
     } catch (err) {
-      console.error('Exceção ao buscar/criar perfil:', err);
+      console.error('Erro ao buscar perfil:', err);
     } finally {
       isFetchingProfile.current = false;
     }
-
-    // 4. Fallback de emergência absoluto (impede o ecrã de ficar em loading perpétuo)
-    const fallbackProfile: Profile = {
-      id: userId,
-      name: userMeta?.name || 'Aventureiro',
-      age: 7,
-      avatar: '🦁',
-      stars: 0,
-    };
-    setActiveProfile(fallbackProfile);
-    return fallbackProfile;
+    return null;
   }, []);
 
   const loadUserProfile = useCallback(async () => {
@@ -134,7 +92,7 @@ export default function App() {
     await fetchProfileForUser(session.user.id, session.user.user_metadata);
   }, [session, fetchProfileForUser]);
 
-  // Inicialização resiliente
+  // Inicialização rápida sem travar
   useEffect(() => {
     let isMounted = true;
 
@@ -146,12 +104,10 @@ export default function App() {
         setSession(curSession);
 
         if (curSession?.user) {
-          await Promise.allSettled([
-            fetchProfileForUser(curSession.user.id, curSession.user.user_metadata),
-            loadModules(),
-          ]);
+          fetchProfileForUser(curSession.user.id, curSession.user.user_metadata);
+          loadModules();
         } else {
-          await loadModules();
+          loadModules();
         }
       } catch (e) {
         console.error('Erro na inicializacao:', e);
@@ -162,11 +118,6 @@ export default function App() {
 
     initSession();
 
-    // Timeout de segurança: destrava o ecrã caso a ligação demore
-    const timeout = setTimeout(() => {
-      if (isMounted) setLoading(false);
-    }, 2000);
-
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
       if (!isMounted) return;
       if (event === 'INITIAL_SESSION') return;
@@ -174,7 +125,7 @@ export default function App() {
       setSession(newSession);
 
       if (newSession?.user) {
-        await fetchProfileForUser(newSession.user.id, newSession.user.user_metadata);
+        fetchProfileForUser(newSession.user.id, newSession.user.user_metadata);
       } else {
         setActiveProfile(null);
       }
@@ -183,27 +134,22 @@ export default function App() {
 
     return () => {
       isMounted = false;
-      clearTimeout(timeout);
       subscription.unsubscribe();
     };
   }, [fetchProfileForUser, loadModules]);
 
-  // Verificar conclusão do dia com tolerância a falhas
+  // Checagem de conclusão diária
   const checkTodayProgress = useCallback(async (profileId: string) => {
     const todayStr = new Date().toISOString().split('T')[0];
 
-    // 1. Checagem local imediata
     try {
       const isDailyLocal = localStorage.getItem(`daily_done_${profileId}_${todayStr}`);
       if (isDailyLocal === 'true') {
         setTodayCompleted(true);
         return;
       }
-    } catch (e) {
-      console.warn('Erro ao ler localStorage:', e);
-    }
+    } catch (e) {}
 
-    // 2. Consulta no Supabase
     try {
       const { data, error } = await supabase
         .from('lesson_progress')
@@ -231,13 +177,22 @@ export default function App() {
     }
   }, []);
 
-  useEffect(() => {
-    if (activeProfile?.id) {
-      checkTodayProgress(activeProfile.id);
-    }
-  }, [activeProfile?.id, checkTodayProgress]);
+  // Perfil que será usado na tela inteira (nunca é nulo enquanto estiver logado)
+  const currentProfile: Profile = activeProfile || {
+    id: session?.user?.id || 'perfil-padrao',
+    name: session?.user?.user_metadata?.name || session?.user?.email?.split('@')[0] || 'Aventureiro',
+    age: 7,
+    avatar: '🦁',
+    stars: 0,
+  };
 
-  // Sair de forma limpa
+  useEffect(() => {
+    if (currentProfile?.id) {
+      checkTodayProgress(currentProfile.id);
+    }
+  }, [currentProfile?.id, checkTodayProgress]);
+
+  // Logout
   async function handleLogoutAccount() {
     try {
       await supabase.auth.signOut();
@@ -245,7 +200,7 @@ export default function App() {
       console.error(e);
     }
     Object.keys(localStorage).forEach((key) => {
-      if (key.startsWith('sb-') || key.includes('auth-token') || key.startsWith('cached_profile_')) {
+      if (key.startsWith('sb-') || key.includes('auth-token')) {
         localStorage.removeItem(key);
       }
     });
@@ -256,16 +211,15 @@ export default function App() {
     setLoading(false);
   }
 
-  // Atualizar Avatar
+  // Atualizar avatar
   async function handleAvatarUpdated(newAvatar: string) {
-    if (!activeProfile) return;
-    setActiveProfile({ ...activeProfile, avatar: newAvatar });
+    setActiveProfile({ ...currentProfile, avatar: newAvatar });
 
     try {
       await supabase
         .from('profiles')
         .update({ avatar: newAvatar })
-        .eq('user_id', activeProfile.user_id || activeProfile.id);
+        .eq('id', currentProfile.id);
     } catch (e) {
       console.error('Erro ao salvar avatar:', e);
     }
@@ -286,7 +240,7 @@ export default function App() {
     }
   }
 
-  // Se estiver carregando inicialmente
+  // Se estiver na tela de loading inicial antes de ler a sessão
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-sky-100 via-indigo-50 to-rose-50 flex items-center justify-center p-4">
@@ -298,7 +252,7 @@ export default function App() {
     );
   }
 
-  // Não logado -> Formulário de autenticação
+  // Não logado -> Tela de login
   if (!session) {
     return (
       <AuthModal
@@ -315,29 +269,12 @@ export default function App() {
     );
   }
 
-  // Se por alguma razão o perfil demorar, o fallback garante a transição rápida
-  if (!activeProfile) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-sky-100 via-indigo-50 to-rose-50 flex items-center justify-center p-4">
-        <div className="text-center bg-white p-6 rounded-3xl shadow-lg border border-slate-100 max-w-sm w-full">
-          <div className="text-5xl animate-bounce mb-3">🦁</div>
-          <p className="text-slate-700 font-bold text-sm mb-4">A preparar o teu perfil...</p>
-          <button
-            onClick={handleLogoutAccount}
-            className="text-xs text-rose-500 font-bold underline cursor-pointer"
-          >
-            Sair e tentar novamente
-          </button>
-        </div>
-      </div>
-    );
-  }
-
+  // LOGADO: Entra direto na tela principal (sem nenhuma tela de espera intermediária)
   return (
     <div className="min-h-screen bg-gradient-to-br from-sky-50 via-indigo-50 to-rose-50 pb-32 sm:pb-24">
       <TopBar
-        profiles={[activeProfile]}
-        activeProfileId={activeProfile.id}
+        profiles={[currentProfile]}
+        activeProfileId={currentProfile.id}
         onSelectProfile={() => {}}
         onOpenParentArea={() => setParentOpen(true)}
       />
@@ -410,17 +347,17 @@ export default function App() {
                     className="w-11 h-11 rounded-xl bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 flex items-center justify-center text-2xl shadow-2xs cursor-pointer hover:scale-105 active:scale-95 transition-all relative"
                     title="Escolhe o teu avatar"
                   >
-                    <span className="select-none">{activeProfile.avatar || '🦁'}</span>
+                    <span className="select-none">{currentProfile.avatar || '🦁'}</span>
                     <span className="absolute -bottom-1 -right-1 bg-indigo-600 text-white p-0.5 rounded-full text-[8px]">
                       ✏️
                     </span>
                   </button>
                   <div>
                     <h4 className="font-black text-slate-800 text-xs leading-tight">
-                      {activeProfile.name}
+                      {currentProfile.name}
                     </h4>
                     <p className="text-[10px] font-bold text-slate-400">
-                      ⭐ {activeProfile.stars} estrelas
+                      ⭐ {currentProfile.stars} estrelas
                     </p>
                   </div>
                 </div>
@@ -434,7 +371,7 @@ export default function App() {
                 </button>
               </div>
 
-              <LeaderboardCard currentProfileId={activeProfile.id} />
+              <LeaderboardCard currentProfileId={currentProfile.id} />
             </div>
           </div>
         ) : (
@@ -442,7 +379,7 @@ export default function App() {
             {view.name === 'lessons' && (
               <ModuleLessons
                 module={view.module}
-                profileId={activeProfile.id}
+                profileId={currentProfile.id}
                 onBack={() => setView({ name: 'trail' })}
                 onStartLesson={handleStartLesson}
               />
@@ -452,28 +389,28 @@ export default function App() {
               <LessonRunner
                 module={view.module}
                 lessonDay={view.lessonDay}
-                profileId={activeProfile.id}
-                profileName={activeProfile.name}
+                profileId={currentProfile.id}
+                profileName={currentProfile.name}
                 existingProgress={view.progress}
                 onBack={() => setView({ name: 'lessons', module: view.module })}
                 onComplete={() => {
                   setTodayCompleted(true);
-                  checkTodayProgress(activeProfile.id);
+                  checkTodayProgress(currentProfile.id);
                   setView({ name: 'trail' });
                 }}
                 onStarsUpdated={loadUserProfile}
-                profileStars={activeProfile.stars}
+                profileStars={currentProfile.stars}
               />
             )}
 
             {view.name === 'missions' && (
-              <HomeMissions profile={activeProfile} onProfilesChanged={loadUserProfile} />
+              <HomeMissions profile={currentProfile} onProfilesChanged={loadUserProfile} />
             )}
 
             {view.name === 'playground' && (
               <Playground
-                profileId={activeProfile.id}
-                profileStars={activeProfile.stars}
+                profileId={currentProfile.id}
+                profileStars={currentProfile.stars}
                 onBack={() => setView({ name: 'trail' })}
                 onStarsUpdated={loadUserProfile}
               />
@@ -545,8 +482,8 @@ export default function App() {
       </nav>
 
       <BadgesModal
-        profileId={activeProfile.id}
-        profileName={activeProfile.name}
+        profileId={currentProfile.id}
+        profileName={currentProfile.name}
         isOpen={badgesOpen}
         onClose={() => setBadgesOpen(false)}
       />
@@ -554,15 +491,15 @@ export default function App() {
       <AvatarPickerModal
         isOpen={avatarModalOpen}
         onClose={() => setAvatarModalOpen(false)}
-        currentAvatar={activeProfile.avatar || '🦁'}
-        profileId={activeProfile.id}
+        currentAvatar={currentProfile.avatar || '🦁'}
+        profileId={currentProfile.id}
         onAvatarUpdated={handleAvatarUpdated}
       />
 
       <ParentArea
         open={parentOpen}
         onClose={() => setParentOpen(false)}
-        profiles={[activeProfile]}
+        profiles={[currentProfile]}
         onProfilesChanged={loadUserProfile}
         onLogoutAccount={handleLogoutAccount}
       />
