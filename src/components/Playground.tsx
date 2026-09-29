@@ -232,7 +232,10 @@ export default function Playground({ profileId, onBack, onStarsUpdated, profileS
         <GameSpeedTap key="speed" pool={currentPool} onWin={() => awardBonusStar(2)} />
       )}
       {activeGame === 'builder' && (
-        <GameWordBuilder key="builder" pool={currentPool} onWin={() => awardBonusStar(2)} />
+        <GameWordBuilder 
+  pool={allWords.filter(...)} 
+  onWin={handleWin} 
+/>
       )}
       {activeGame === 'colors' && (
         <GameColorsMatch key="colors" pool={currentPool} onWin={() => awardBonusStar(2)} />
@@ -1468,36 +1471,45 @@ function GameSpeedTap({ pool, onWin }: { pool: Word[]; onWin: () => void }) {
   );
 }
 
-/* ==================== 5. WORD BUILDER ==================== */
+/* ==================== 5. WORD BUILDER (BLINDADO CONTRA LOOPS) ==================== */
 function GameWordBuilder({ pool = [], onWin }: { pool: Word[]; onWin: () => void }) {
-  // 1. Memorização estável do array de palavras para quebrar o ciclo de render
-  const eligible = useMemo(() => {
-    return (pool || []).filter((w) => w && w.word_en && w.word_en.trim().length >= 3);
-  }, [pool]);
+  // Congela as palavras válidas em uma ref para nunca mais mudar durante a partida
+  const poolRef = useRef<Word[]>([]);
+  if (poolRef.current.length === 0 && pool && pool.length > 0) {
+    poolRef.current = pool.filter((w) => w && w.word_en && w.word_en.trim().length >= 3);
+  }
 
   const [target, setTarget] = useState<Word | null>(null);
   const [picked, setPicked] = useState<number[]>([]);
   const [scramble, setScramble] = useState<{ id: number; char: string }[]>([]);
   const [isLocked, setIsLocked] = useState(false);
+  const isStartedRef = useRef(false);
   const roundTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 2. startRound estável dependendo apenas da quantidade de palavras
   const startRound = useCallback(() => {
-    if (eligible.length === 0) return;
-    const chosen = eligible[Math.floor(Math.random() * eligible.length)];
+    const list = poolRef.current.length > 0 
+      ? poolRef.current 
+      : pool.filter((w) => w && w.word_en && w.word_en.trim().length >= 3);
+
+    if (list.length === 0) return;
+
+    const chosen = list[Math.floor(Math.random() * list.length)];
     setTarget(chosen);
     setPicked([]);
     setIsLocked(false);
 
     const letters = chosen.word_en.toUpperCase().replace(/[^A-Z]/g, '').split('');
     setScramble(letters.map((char, id) => ({ id, char })).sort(() => Math.random() - 0.5));
-    
-    speakWord(chosen.word_en);
-  }, [eligible.length]);
 
-  // 3. Execução segura apenas na montagem ou quando a lista de palavras mudar
+    speakWord(chosen.word_en);
+  }, []); // Sem dependências dinâmicas: função 100% estável
+
+  // Inicia APENAS uma única vez ao montar na tela
   useEffect(() => {
-    startRound();
+    if (!isStartedRef.current) {
+      isStartedRef.current = true;
+      startRound();
+    }
     return () => {
       if (roundTimerRef.current) clearTimeout(roundTimerRef.current);
     };
@@ -1512,7 +1524,7 @@ function GameWordBuilder({ pool = [], onWin }: { pool: Word[]; onWin: () => void
     const currentStr = newPicked.map((idx) => scramble[idx].char).join('');
 
     if (currentStr.length === targetClean.length) {
-      setIsLocked(true); // Bloqueia cliques adicionais durante a animação
+      setIsLocked(true);
 
       if (currentStr === targetClean) {
         if (typeof playSuccessSound === 'function') playSuccessSound();
@@ -1529,25 +1541,27 @@ function GameWordBuilder({ pool = [], onWin }: { pool: Word[]; onWin: () => void
     }
   };
 
-  if (eligible.length === 0 || !target) return <EmptyWarning />;
+  if (!target) return <EmptyWarning />;
+
+  const targetChars = target.word_en.toUpperCase().replace(/[^A-Z]/g, '').split('');
 
   return (
     <div className="w-full max-w-md mx-auto bg-teal-50 border-2 border-teal-200 rounded-3xl p-4 sm:p-6 text-center overflow-hidden select-none">
-      <span className="bg-teal-200 text-teal-800 text-xs font-black px-3 py-1 rounded-full uppercase">
+      <span className="bg-teal-200 text-teal-800 text-xs font-black px-3 py-1 rounded-full uppercase tracking-wider">
         🔤 Word Builder
       </span>
 
-      <div className="text-5xl sm:text-6xl my-2 sm:my-3">{target.emoji || '⭐'}</div>
+      <div className="text-5xl sm:text-6xl my-2 sm:my-3 select-none">{target.emoji || '⭐'}</div>
       <h3 className="text-base sm:text-lg font-black text-slate-800">{target.word_pt}</h3>
 
-      {/* Caixas de Montagem Fluidas */}
+      {/* Caixas de Montagem */}
       <div className="flex justify-center gap-1.5 sm:gap-2 my-4 flex-wrap">
-        {target.word_en.toUpperCase().replace(/[^A-Z]/g, '').split('').map((_, i) => {
+        {targetChars.map((_, i) => {
           const char = picked[i] !== undefined ? scramble[picked[i]]?.char : '';
           return (
             <div
               key={i}
-              className="w-9 h-10 sm:w-11 sm:h-12 rounded-xl border-2 border-teal-500 bg-white flex items-center justify-center font-black text-base sm:text-xl text-teal-700 shadow-xs"
+              className="w-10 h-11 sm:w-12 sm:h-13 rounded-xl border-2 border-teal-500 bg-white flex items-center justify-center font-black text-base sm:text-xl text-teal-700 shadow-xs"
             >
               {char || ''}
             </div>
@@ -1556,15 +1570,16 @@ function GameWordBuilder({ pool = [], onWin }: { pool: Word[]; onWin: () => void
       </div>
 
       {/* Letras para Escolher */}
-      <div className="flex justify-center gap-1.5 sm:gap-2 flex-wrap">
+      <div className="flex justify-center gap-1.5 sm:gap-2 flex-wrap mb-2">
         {scramble.map((item, idx) => {
           const used = picked.includes(idx);
           return (
             <button
               key={item.id}
+              type="button"
               onClick={() => handlePick(idx)}
               disabled={used || isLocked}
-              className={`w-10 h-10 sm:w-12 sm:h-12 rounded-2xl font-black text-base sm:text-lg border-2 transition-all ${
+              className={`w-11 h-11 sm:w-12 sm:h-12 rounded-2xl font-black text-base sm:text-lg border-2 transition-all ${
                 used
                   ? 'border-slate-100 bg-slate-100 text-slate-300 opacity-40 cursor-not-allowed'
                   : 'border-teal-300 bg-white text-teal-800 shadow-sm hover:border-teal-500 active:scale-95 cursor-pointer'
@@ -1576,8 +1591,9 @@ function GameWordBuilder({ pool = [], onWin }: { pool: Word[]; onWin: () => void
         })}
       </div>
 
-      <div className="mt-3 sm:mt-4">
+      <div className="mt-3">
         <button
+          type="button"
           onClick={() => {
             if (!isLocked) setPicked([]);
           }}
