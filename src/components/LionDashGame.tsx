@@ -39,7 +39,6 @@ export default function LionDashGame({ pool = [], onBack, onWinBonus }: LionDash
   const [gameOver, setGameOver] = useState(false);
   const [combo, setCombo] = useState(0);
 
-  // Pool de palavras estável em ref para não causar re-execuções no React
   const wordsPoolRef = useRef<Word[]>([]);
   const queueIndexRef = useRef(0);
 
@@ -47,7 +46,7 @@ export default function LionDashGame({ pool = [], onBack, onWinBonus }: LionDash
     lane: 0,
     playerX: 0,
     playerTargetX: 0,
-    speed: 0.85, // Velocidade balanceada e constante
+    speed: 0.85,
     progressZ: 0,
     gates: [] as GateOption[],
     particles: [] as Particle[],
@@ -63,7 +62,6 @@ export default function LionDashGame({ pool = [], onBack, onWinBonus }: LionDash
     combo: 0,
   });
 
-  // Inicializa e embaralha a lista de palavras apenas uma vez
   useEffect(() => {
     const valid = (pool || []).filter((w) => w && w.word_en && w.word_en.trim().length > 1);
     if (valid.length >= 3) {
@@ -74,16 +72,13 @@ export default function LionDashGame({ pool = [], onBack, onWinBonus }: LionDash
     queueIndexRef.current = 0;
   }, [pool]);
 
-  // Prepara a próxima palavra e os 3 portais
   const nextRound = useCallback(() => {
     const poolList = wordsPoolRef.current;
     if (poolList.length < 3) return;
 
-    // Avança no array circular para nunca repetir a mesma palavra em looping
     const target = poolList[queueIndexRef.current % poolList.length];
     queueIndexRef.current++;
 
-    // Sorteia 2 opções erradas diferentes do alvo
     const decoys = poolList.filter((w) => w.id !== target.id).sort(() => Math.random() - 0.5);
     const lanes = [-1, 0, 1].sort(() => Math.random() - 0.5);
 
@@ -155,7 +150,6 @@ export default function LionDashGame({ pool = [], onBack, onWinBonus }: LionDash
     }
   };
 
-  // Loop de Renderização 2.5D fluido
   useEffect(() => {
     let animId: number;
     engineRef.current.lastTime = performance.now();
@@ -195,14 +189,14 @@ export default function LionDashGame({ pool = [], onBack, onWinBonus }: LionDash
               engine.combo += 1;
               setScore(engine.score);
               setCombo(engine.combo);
-              createBurst(midX + engine.playerX, H - 75, '#10b981');
+              createBurst(midX + engine.playerX, H - 75, '#10b981'); // Explosão verde de acerto
               if (onWinBonus) onWinBonus(2);
             } else {
               engine.lives -= 1;
               engine.combo = 0;
               setLives(engine.lives);
               setCombo(0);
-              createBurst(midX + engine.playerX, H - 75, '#ef4444');
+              createBurst(midX + engine.playerX, H - 75, '#ef4444'); // Explosão vermelha de erro
 
               if (engine.lives <= 0) {
                 engine.active = false;
@@ -212,7 +206,6 @@ export default function LionDashGame({ pool = [], onBack, onWinBonus }: LionDash
           }
         }
 
-        // Transição suave para o próximo portal sem congelamento
         if (!engine.waitingNextRound && engine.progressZ >= 1.05) {
           engine.waitingNextRound = true;
           nextRound();
@@ -278,7 +271,7 @@ export default function LionDashGame({ pool = [], onBack, onWinBonus }: LionDash
       ctx.lineTo(midX + 185, H);
       ctx.stroke();
 
-      // Divisórias das 3 pistas com animação contínua
+      // Divisórias das 3 pistas
       const numLines = 7;
       for (let i = 0; i < numLines; i++) {
         const pz = (i / numLines + engine.roadOffset) % 1;
@@ -296,7 +289,7 @@ export default function LionDashGame({ pool = [], onBack, onWinBonus }: LionDash
         ctx.stroke();
       }
 
-      // 3. Portais Mágicos
+      // 3. Portais Mágicos (TODOS NA MESMA COR NEON CIANO/AZUL MÁGICO)
       const z = engine.progressZ;
       if (z >= 0 && z <= 1.0) {
         const portalY = ROAD_HORIZON_Y + (H - ROAD_HORIZON_Y) * z;
@@ -311,18 +304,19 @@ export default function LionDashGame({ pool = [], onBack, onWinBonus }: LionDash
           ctx.save();
           ctx.translate(gateX, portalY - gateH / 2);
 
-          // Brilho do portal
-          ctx.shadowColor = gate.isCorrect ? '#10b981' : '#f43f5e';
-          ctx.shadowBlur = 10 * scale;
-          ctx.strokeStyle = gate.isCorrect ? '#34d399' : '#fb7185';
+          // Brilho e anel luminoso neutro (Ciano elétrico)
+          ctx.shadowColor = '#06b6d4';
+          ctx.shadowBlur = 12 * scale;
+          ctx.strokeStyle = '#38bdf8';
           ctx.lineWidth = 3.5 * scale;
 
           ctx.beginPath();
           ctx.roundRect(-gateW / 2, -gateH / 2, gateW, gateH, 14 * scale);
           ctx.stroke();
 
+          // Fundo interior do portal
           const insideGrad = ctx.createLinearGradient(0, -gateH / 2, 0, gateH / 2);
-          insideGrad.addColorStop(0, gate.isCorrect ? 'rgba(52, 211, 153, 0.45)' : 'rgba(244, 63, 94, 0.4)');
+          insideGrad.addColorStop(0, 'rgba(56, 189, 248, 0.35)');
           insideGrad.addColorStop(1, 'rgba(15, 23, 42, 0.85)');
           ctx.fillStyle = insideGrad;
           ctx.fill();
@@ -348,13 +342,11 @@ export default function LionDashGame({ pool = [], onBack, onWinBonus }: LionDash
       ctx.save();
       ctx.translate(currentX, playerY + bobbing);
 
-      // Sombra suave
       ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
       ctx.beginPath();
       ctx.ellipse(0, 26 - bobbing, 26, 8, 0, 0, Math.PI * 2);
       ctx.fill();
 
-      // Inclinação corporal ao mudar de pista
       const tilt = (engine.playerTargetX - engine.playerX) * 0.035;
       ctx.rotate(tilt);
 
@@ -501,7 +493,7 @@ export default function LionDashGame({ pool = [], onBack, onWinBonus }: LionDash
 
       <div className="pb-3 text-center">
         <p className="text-[11px] font-bold text-indigo-300">
-          Deslize ou toque nas setas para passar pelo portal correto! 🌟
+          Ouça o som e leia a placa para passar no portal certo! 🌟
         </p>
       </div>
 
