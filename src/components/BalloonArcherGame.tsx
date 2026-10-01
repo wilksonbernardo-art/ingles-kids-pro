@@ -63,13 +63,11 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
   const targetWord = currentTarget.word;
   const targetLetter = targetWord[currentLetterIdx];
 
-  // Aumenta a velocidade e o desafio conforme a palavra (nível)
-  const currentSpeedMultiplier = 1 + wordIndex * 0.12;
+  // Aumento sutil e gradual por nível (apenas 4% por palavra)
+  const currentSpeedMultiplier = 1 + wordIndex * 0.04;
 
   const nextBalloonId = useRef(1);
   const gameLoopRef = useRef<number | null>(null);
-  const livesRef = useRef(lives);
-  livesRef.current = lives;
 
   const speakText = useCallback((text: string) => {
     if (!('speechSynthesis' in window)) return;
@@ -94,59 +92,61 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
 
       if (type === 'pop') {
         osc.type = 'triangle';
-        osc.frequency.setValueAtTime(500, ctx.currentTime);
-        osc.frequency.exponentialRampToValueAtTime(140, ctx.currentTime + 0.12);
-        gain.gain.setValueAtTime(0.3, ctx.currentTime);
-        gain.gain.linearRampToValueAtTime(0.01, ctx.currentTime + 0.12);
+        osc.frequency.setValueAtTime(520, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(150, ctx.currentTime + 0.14);
+        gain.gain.setValueAtTime(0.35, ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.01, ctx.currentTime + 0.14);
         osc.start();
-        osc.stop(ctx.currentTime + 0.12);
+        osc.stop(ctx.currentTime + 0.14);
       } else if (type === 'bomb') {
         osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(120, ctx.currentTime);
-        osc.frequency.linearRampToValueAtTime(40, ctx.currentTime + 0.25);
+        osc.frequency.setValueAtTime(130, ctx.currentTime);
+        osc.frequency.linearRampToValueAtTime(35, ctx.currentTime + 0.28);
         gain.gain.setValueAtTime(0.4, ctx.currentTime);
-        gain.gain.linearRampToValueAtTime(0.01, ctx.currentTime + 0.25);
+        gain.gain.linearRampToValueAtTime(0.01, ctx.currentTime + 0.28);
         osc.start();
-        osc.stop(ctx.currentTime + 0.25);
+        osc.stop(ctx.currentTime + 0.28);
       } else {
         osc.type = 'sine';
         osc.frequency.setValueAtTime(260, ctx.currentTime);
-        osc.frequency.linearRampToValueAtTime(180, ctx.currentTime + 0.15);
+        osc.frequency.linearRampToValueAtTime(170, ctx.currentTime + 0.18);
         gain.gain.setValueAtTime(0.2, ctx.currentTime);
-        gain.gain.linearRampToValueAtTime(0.01, ctx.currentTime + 0.15);
+        gain.gain.linearRampToValueAtTime(0.01, ctx.currentTime + 0.18);
         osc.start();
-        osc.stop(ctx.currentTime + 0.15);
+        osc.stop(ctx.currentTime + 0.18);
       }
       osc.connect(gain);
       gain.connect(ctx.destination);
     } catch {}
   }, []);
 
-  // Gerador de balões (com bombas e letras)
+  // Gerador de balões com ritmo mais tranquilo
   useEffect(() => {
     if (gameOver || victory) return;
 
     const interval = setInterval(() => {
       setBalloons((prev) => {
-        if (prev.length >= 8) return prev;
+        if (prev.length >= 7) return prev;
 
-        const isBomb = Math.random() < 0.16; // 16% de chance de ser uma bomba perigosa
-        const needTarget = !isBomb && Math.random() < 0.45;
+        const isBomb = Math.random() < 0.12; // 12% de chance de bomba
+        const needTarget = !isBomb && Math.random() < 0.5;
         const letter = isBomb
           ? '💣'
           : needTarget
           ? targetLetter
           : String.fromCharCode(65 + Math.floor(Math.random() * 26));
 
-        const baseX = Math.floor(Math.random() * 74) + 12;
+        // Posição horizontal bem espaçada
+        const baseX = Math.floor(Math.random() * 70) + 15;
         const newBalloon: Balloon = {
           id: nextBalloonId.current++,
           letter,
           isBomb,
           baseX,
           x: baseX,
-          y: 105,
-          speed: (Math.random() * 0.35 + 0.38) * currentSpeedMultiplier,
+          y: 108,
+          // Velocidade reduzida e confortável para crianças
+          speed: (Math.random() * 0.10 + 0.16) * currentSpeedMultiplier,
           color: isBomb ? 'from-slate-700 to-slate-900' : BALLOON_COLORS[Math.floor(Math.random() * BALLOON_COLORS.length)],
           popped: false,
           wiggleSeed: Math.random() * 10,
@@ -154,29 +154,29 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
 
         return [...prev, newBalloon];
       });
-    }, 900);
+    }, 1200);
 
     return () => clearInterval(interval);
   }, [targetLetter, gameOver, victory, currentSpeedMultiplier]);
 
-  // Loop de física: movimento vertical + oscilação horizontal de vento
+  // Movimento suave dos balões
   useEffect(() => {
     if (gameOver || victory) return;
 
     const updateFrame = () => {
-      const now = Date.now() / 400;
+      const now = Date.now() / 600;
 
       setBalloons((prev) => {
         const nextList: Balloon[] = [];
 
         for (const b of prev) {
           const nextY = b.y - b.speed;
-          // Efeito de vento ondulante no eixo X
-          const wiggleOffset = Math.sin(now + b.wiggleSeed) * 5;
-          const nextX = Math.max(8, Math.min(92, b.baseX + wiggleOffset));
+          // Oscilação suave do vento (3% de variação)
+          const wiggleOffset = Math.sin(now + b.wiggleSeed) * 3.5;
+          const nextX = Math.max(10, Math.min(90, b.baseX + wiggleOffset));
 
-          // Penalidade: Se a letra alvo escapou pelo topo sem ser atingida!
-          if (nextY <= -10 && !b.popped && b.letter === targetLetter && !b.isBomb) {
+          // Letra correta escapou pelo topo
+          if (nextY <= -12 && !b.popped && b.letter === targetLetter && !b.isBomb) {
             playSoundEffect('miss');
             setLives((l) => {
               const remaining = l - 1;
@@ -185,7 +185,7 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
             });
           }
 
-          if (nextY > -15) {
+          if (nextY > -18) {
             nextList.push({
               ...b,
               x: nextX,
@@ -207,16 +207,16 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
     };
   }, [gameOver, victory, targetLetter, playSoundEffect]);
 
-  // Atirar flecha no balão
+  // Disparo da flecha
   const handleShootBalloon = (balloon: Balloon) => {
     if (balloon.popped || gameOver || victory) return;
 
     const angle = (balloon.x - 50) * 0.8;
     setAimAngle(angle);
     setArrowAnim({ x: balloon.x, y: balloon.y });
-    setTimeout(() => setArrowAnim(null), 220);
+    setTimeout(() => setArrowAnim(null), 240);
 
-    // Acertou uma BOMBA 💣
+    // Acertou a bomba
     if (balloon.isBomb) {
       playSoundEffect('bomb');
       setBalloons((prev) => prev.map((b) => (b.id === balloon.id ? { ...b, popped: true } : b)));
@@ -228,7 +228,7 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
       return;
     }
 
-    // Acertou a letra CERTA
+    // Acertou a letra certa
     if (balloon.letter === targetLetter) {
       playSoundEffect('pop');
       speakText(balloon.letter);
@@ -237,7 +237,7 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
 
       const nextIdx = currentLetterIdx + 1;
       if (nextIdx >= targetWord.length) {
-        confetti({ particleCount: 70, spread: 65, origin: { y: 0.6 } });
+        confetti({ particleCount: 75, spread: 65, origin: { y: 0.6 } });
         speakText(targetWord);
         setScore((s) => s + 15);
         if (onStarsEarned) onStarsEarned(2);
@@ -247,7 +247,7 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
             setWordIndex((w) => w + 1);
             setCurrentLetterIdx(0);
             setBalloons([]);
-          }, 850);
+          }, 900);
         } else {
           setVictory(true);
         }
@@ -255,7 +255,7 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
         setCurrentLetterIdx(nextIdx);
       }
     } else {
-      // Letra ERRADA
+      // Letra errada
       playSoundEffect('miss');
       setLives((l) => {
         const nextLives = l - 1;
@@ -276,35 +276,35 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
   };
 
   return (
-    <div className="relative w-full max-w-3xl mx-auto h-[590px] bg-gradient-to-b from-sky-300 via-sky-100 to-amber-100 rounded-3xl border-4 border-white shadow-2xl overflow-hidden flex flex-col justify-between select-none">
-      {/* Topo / Barra de Dificuldade e Alvo */}
-      <div className="p-3.5 z-20 bg-white/80 backdrop-blur-md rounded-b-3xl border-b border-white/60 shadow-xs">
+    <div className="relative w-full max-w-3xl mx-auto h-[620px] bg-gradient-to-b from-sky-300 via-sky-100 to-amber-100 rounded-3xl border-4 border-white shadow-2xl overflow-hidden flex flex-col justify-between select-none">
+      {/* Topo / Barra de Progresso */}
+      <div className="p-3.5 z-20 bg-white/85 backdrop-blur-md rounded-b-3xl border-b border-white/60 shadow-xs">
         <div className="flex items-center justify-between gap-2 mb-2">
           <button
             onClick={onBack}
-            className="flex items-center gap-1 text-slate-600 hover:text-slate-900 font-bold text-xs bg-white px-3 py-1.5 rounded-xl shadow-xs cursor-pointer"
+            className="flex items-center gap-1 text-slate-600 hover:text-slate-900 font-bold text-xs bg-white px-3.5 py-1.5 rounded-xl shadow-xs cursor-pointer active:scale-95 transition-all"
           >
             <ArrowLeft className="w-4 h-4" /> Sair
           </button>
 
           {/* Vidas */}
-          <div className="flex items-center gap-1 bg-white/90 px-3 py-1 rounded-xl shadow-xs border border-rose-100">
+          <div className="flex items-center gap-1.5 bg-white px-3.5 py-1 rounded-xl shadow-xs border border-rose-100">
             {[1, 2, 3].map((heart) => (
               <Heart
                 key={heart}
-                className={`w-4 h-4 transition-all ${
+                className={`w-5 h-5 transition-all ${
                   heart <= lives ? 'text-rose-500 fill-rose-500 scale-105' : 'text-slate-200'
                 }`}
               />
             ))}
           </div>
 
-          {/* Nível e Vento */}
+          {/* Nível e Pontos */}
           <div className="flex items-center gap-1.5">
-            <span className="bg-orange-100 text-orange-800 text-[10px] font-black px-2.5 py-1 rounded-xl flex items-center gap-1 shadow-2xs border border-orange-200">
-              <Flame className="w-3 h-3 text-orange-500 fill-current" /> Nível {wordIndex + 1}
+            <span className="bg-orange-100 text-orange-800 text-xs font-black px-3 py-1 rounded-xl flex items-center gap-1 shadow-2xs border border-orange-200">
+              <Flame className="w-3.5 h-3.5 text-orange-500 fill-current" /> Nível {wordIndex + 1}
             </span>
-            <div className="bg-amber-100 border border-amber-300 text-amber-900 px-2.5 py-1 rounded-xl text-xs font-black shadow-2xs">
+            <div className="bg-amber-100 border border-amber-300 text-amber-900 px-3 py-1 rounded-xl text-xs font-black shadow-2xs">
               ⭐ {score}
             </div>
           </div>
@@ -313,18 +313,18 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
         {/* Palavra Alvo */}
         <div className="flex flex-col items-center">
           <div className="flex items-center gap-2 mb-1">
-            <span className="text-3xl">{currentTarget.emoji}</span>
-            <span className="text-sm font-black text-slate-700">({currentTarget.translation})</span>
+            <span className="text-4xl">{currentTarget.emoji}</span>
+            <span className="text-base font-black text-slate-800">({currentTarget.translation})</span>
             <button
               onClick={() => speakText(targetWord)}
-              className="p-1 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded-lg cursor-pointer transition-transform hover:scale-110"
+              className="p-1.5 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded-xl cursor-pointer transition-transform hover:scale-110 active:scale-95"
               title="Ouvir palavra"
             >
               <Volume2 className="w-4 h-4" />
             </button>
           </div>
 
-          <div className="flex items-center gap-2 mt-0.5">
+          <div className="flex items-center gap-2 mt-1">
             {targetWord.split('').map((letter, idx) => {
               const isFilled = idx < currentLetterIdx;
               const isCurrent = idx === currentLetterIdx;
@@ -332,12 +332,12 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
               return (
                 <div
                   key={idx}
-                  className={`w-10 h-11 rounded-2xl flex items-center justify-center font-black text-lg transition-all shadow-xs ${
+                  className={`w-11 h-13 rounded-2xl flex items-center justify-center font-black text-xl transition-all shadow-xs ${
                     isFilled
                       ? 'bg-emerald-500 text-white scale-105 shadow-emerald-200'
                       : isCurrent
                       ? 'bg-white border-2 border-indigo-500 text-indigo-600 animate-bounce'
-                      : 'bg-white/60 border-2 border-dashed border-slate-300 text-slate-300'
+                      : 'bg-white/70 border-2 border-dashed border-slate-300 text-slate-300'
                   }`}
                 >
                   {isFilled ? letter : isCurrent ? '?' : ''}
@@ -346,9 +346,9 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
             })}
           </div>
 
-          <div className="flex items-center gap-2 mt-1 text-[11px] font-bold">
-            <span className="text-slate-500">
-              Mire em: <strong className="text-indigo-600 text-sm uppercase font-black">{targetLetter}</strong>
+          <div className="flex items-center gap-2 mt-1.5 text-xs font-bold">
+            <span className="text-slate-600">
+              Estoure a letra: <strong className="text-indigo-600 text-base uppercase font-black">{targetLetter}</strong>
             </span>
             <span className="text-slate-300">•</span>
             <span className="text-rose-600 font-extrabold flex items-center gap-0.5">
@@ -358,7 +358,7 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
         </div>
       </div>
 
-      {/* Área dos Balões */}
+      {/* Área dos Balões Ampliada */}
       <div className="relative flex-1 w-full overflow-hidden">
         {balloons.map((b) => {
           if (b.popped) {
@@ -366,7 +366,7 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
               <div
                 key={b.id}
                 style={{ left: `${b.x}%`, top: `${b.y}%` }}
-                className="absolute text-3xl animate-ping select-none pointer-events-none -translate-x-1/2 -translate-y-1/2"
+                className="absolute text-4xl animate-ping select-none pointer-events-none -translate-x-1/2 -translate-y-1/2"
               >
                 {b.isBomb ? '💥🔥' : '🎈✨'}
               </div>
@@ -382,49 +382,51 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
                 top: `${b.y}%`,
                 transform: 'translate(-50%, -50%)',
               }}
-              className="absolute flex flex-col items-center justify-center cursor-pointer transition-transform hover:scale-115 active:scale-95 group focus:outline-none"
+              className="absolute flex flex-col items-center justify-center cursor-pointer transition-transform hover:scale-110 active:scale-95 group focus:outline-none"
             >
-              {/* Balão com formato e sombra */}
+              {/* Balão Gigante e Fácil de Clicar */}
               <div
-                className={`w-13 h-15 rounded-[50%] bg-gradient-to-t ${b.color} shadow-lg flex items-center justify-center text-white font-black text-xl relative border-2 border-white/40 ${
-                  b.isBomb ? 'animate-pulse ring-2 ring-rose-400' : ''
+                className={`w-18 h-22 rounded-[50%] bg-gradient-to-t ${b.color} shadow-xl flex items-center justify-center text-white font-black text-3xl relative border-3 border-white/50 ${
+                  b.isBomb ? 'animate-pulse ring-4 ring-rose-400' : ''
                 }`}
               >
                 {b.letter}
-                <div className="absolute top-1.5 left-2 w-2.5 h-2.5 bg-white/40 rounded-full" />
+                {/* Brilho do balão */}
+                <div className="absolute top-2.5 left-3 w-4 h-4 bg-white/45 rounded-full" />
               </div>
-              <div className="w-0.5 h-3.5 bg-slate-400/80 -mt-0.5" />
+              {/* Cordão do Balão */}
+              <div className="w-1 h-5 bg-slate-400/80 -mt-0.5 rounded-full" />
             </button>
           );
         })}
 
-        {/* Flecha voando */}
+        {/* Flecha Voando */}
         {arrowAnim && (
           <div
             style={{
               left: `${arrowAnim.x}%`,
               top: `${arrowAnim.y}%`,
-              transition: 'all 0.18s ease-out',
+              transition: 'all 0.20s ease-out',
             }}
-            className="absolute text-2xl pointer-events-none -translate-x-1/2 -translate-y-1/2 scale-125"
+            className="absolute text-3xl pointer-events-none -translate-x-1/2 -translate-y-1/2 scale-125"
           >
             🏹
           </div>
         )}
       </div>
 
-      {/* Arqueiro na base */}
-      <div className="relative z-10 flex flex-col items-center pb-2.5">
+      {/* Arqueiro na Base */}
+      <div className="relative z-10 flex flex-col items-center pb-3">
         <div
           style={{ transform: `rotate(${aimAngle}deg)` }}
           className="transition-transform duration-100 flex items-center justify-center"
         >
-          <div className="text-5xl drop-shadow-md">🦁</div>
-          <div className="text-3xl -ml-2 drop-shadow-md">🏹</div>
+          <div className="text-6xl drop-shadow-md">🦁</div>
+          <div className="text-4xl -ml-2 drop-shadow-md">🏹</div>
         </div>
-        <div className="flex items-center gap-1 text-[10px] font-black text-slate-600 bg-white/70 px-3 py-1 rounded-full mt-1 border border-white">
-          <Wind className="w-3 h-3 text-sky-600" />
-          <span>Não deixe a letra certa fugir pelo topo!</span>
+        <div className="flex items-center gap-1 text-[11px] font-black text-slate-700 bg-white/80 px-4 py-1.5 rounded-full mt-1.5 border border-white shadow-2xs">
+          <Wind className="w-3.5 h-3.5 text-sky-600" />
+          <span>Toque no balão com a letra certa para atirar!</span>
         </div>
       </div>
 
@@ -432,10 +434,10 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
       {gameOver && (
         <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 z-40">
           <div className="bg-white rounded-3xl p-6 text-center max-w-xs w-full shadow-2xl border-4 border-rose-300 animate-in zoom-in-95">
-            <div className="text-5xl mb-2">💣💔</div>
-            <h3 className="text-xl font-black text-slate-800">Fim de Jogo!</h3>
+            <div className="text-5xl mb-2">🎈💔</div>
+            <h3 className="text-xl font-black text-slate-800">Tente Outra Vez!</h3>
             <p className="text-xs text-slate-500 font-bold mt-1 mb-4">
-              O vento estava forte e os balões fugiram. Quer tentar com mais atenção?
+              Os balões escaparam! Mire com calma na letra certa.
             </p>
             <button
               onClick={restartGame}
@@ -452,9 +454,9 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
         <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 z-40">
           <div className="bg-white rounded-3xl p-6 text-center max-w-xs w-full shadow-2xl border-4 border-amber-300 animate-in zoom-in-95">
             <div className="text-5xl mb-2">🏆🏹</div>
-            <h3 className="text-xl font-black text-slate-800">Mestre Arqueiro!</h3>
+            <h3 className="text-xl font-black text-slate-800">Parabéns Arqueiro!</h3>
             <p className="text-xs text-slate-500 font-bold mt-1 mb-4">
-              Você completou todos os níveis e desviou de todas as bombas!
+              Você completou todas as palavras com ótima pontaria!
             </p>
             <div className="bg-amber-50 border border-amber-200 text-amber-900 p-2.5 rounded-xl font-black text-sm mb-4">
               Pontuação Final: {score} Pontos! ⭐
@@ -464,7 +466,7 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
                 onClick={restartGame}
                 className="flex-1 bg-indigo-500 text-white font-black py-3 rounded-2xl cursor-pointer hover:bg-indigo-600 transition-all text-xs"
               >
-                De Novo
+                Jogar de Novo
               </button>
               <button
                 onClick={onBack}
