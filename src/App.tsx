@@ -138,18 +138,45 @@ export default function App() {
     };
   }, [fetchProfileForUser, loadModules]);
 
-  // Checagem de conclusão diária
+  // Checagem de conclusão diária resiliente
   const checkTodayProgress = useCallback(async (profileId: string) => {
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayUtc = new Date().toISOString().split('T')[0];
+    const todayLocal = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD local
 
     try {
-      const isDailyLocal = localStorage.getItem(`daily_done_${profileId}_${todayStr}`);
-      if (isDailyLocal === 'true') {
+      // 1. Checa se já está registrado no localStorage para hoje
+      const localKeys = Object.keys(localStorage);
+      const isDailyLocal = localKeys.some((k) => {
+        return (
+          (k.startsWith(`daily_done_${profileId}`) || k.startsWith('daily_done_')) &&
+          (k.includes(todayUtc) || k.includes(todayLocal)) &&
+          localStorage.getItem(k) === 'true'
+        );
+      });
+
+      if (isDailyLocal) {
         setTodayCompleted(true);
+        return;
+      }
+
+      // 2. Checa se alguma aula foi concluída hoje pelo cache de aulas
+      const hasLessonDoneToday = localKeys.some((k) => {
+        if (!k.startsWith('lesson_completed_at_')) return false;
+        const val = localStorage.getItem(k) || '';
+        return val.includes(todayUtc) || val.includes(todayLocal);
+      });
+
+      if (hasLessonDoneToday) {
+        setTodayCompleted(true);
+        try {
+          localStorage.setItem(`daily_done_${profileId}_${todayUtc}`, 'true');
+          localStorage.setItem(`daily_done_${profileId}_${todayLocal}`, 'true');
+        } catch {}
         return;
       }
     } catch (e) {}
 
+    // 3. Consulta no Supabase sem erro de fuso
     try {
       const { data, error } = await supabase
         .from('lesson_progress')
@@ -159,25 +186,24 @@ export default function App() {
       if (!error && data && data.length > 0) {
         const doneToday = data.some((item) => {
           const isDone = item.status === 'completed' || !!item.completed_at;
+          if (!isDone) return false;
           const dt = (item.completed_at || item.created_at || '').split('T')[0];
-          return isDone && dt === todayStr;
+          return dt === todayUtc || dt === todayLocal;
         });
 
         if (doneToday) {
           setTodayCompleted(true);
           try {
-            localStorage.setItem(`daily_done_${profileId}_${todayStr}`, 'true');
+            localStorage.setItem(`daily_done_${profileId}_${todayUtc}`, 'true');
+            localStorage.setItem(`daily_done_${profileId}_${todayLocal}`, 'true');
           } catch {}
           return;
         }
       }
-      setTodayCompleted(false);
-    } catch {
-      setTodayCompleted(false);
-    }
+    } catch {}
   }, []);
 
-  // Perfil que será usado na tela inteira (nunca é nulo enquanto estiver logado)
+  // Perfil que será usado na tela inteira
   const currentProfile: Profile = activeProfile || {
     id: session?.user?.id || 'perfil-padrao',
     name: session?.user?.user_metadata?.name || session?.user?.email?.split('@')[0] || 'Aventureiro',
@@ -208,6 +234,7 @@ export default function App() {
     setSession(null);
     setActiveProfile(null);
     setView({ name: 'trail' });
+    setTodayCompleted(false);
     setLoading(false);
   }
 
@@ -240,7 +267,7 @@ export default function App() {
     }
   }
 
-  // Se estiver na tela de loading inicial antes de ler a sessão
+  // Se estiver na tela de loading inicial
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-sky-100 via-indigo-50 to-rose-50 flex items-center justify-center p-4">
@@ -269,7 +296,6 @@ export default function App() {
     );
   }
 
-  // LOGADO: Entra direto na tela principal (sem nenhuma tela de espera intermediária)
   return (
     <div className="min-h-screen bg-gradient-to-br from-sky-50 via-indigo-50 to-rose-50 pb-32 sm:pb-24">
       <TopBar
@@ -315,7 +341,7 @@ export default function App() {
                       </div>
                       <p className="text-xs font-semibold mt-0.5">
                         {isWeekend
-                          ? 'Acesso livre no fim de semana! Diverte-te com 6 joguinhos.'
+                          ? 'Acesso livre no fim de semana! Diverte-te com os joguinhos.'
                           : todayCompleted
                           ? 'Concluíste a lição de hoje! Joga à vontade.'
                           : 'Conclui a lição de hoje para desbloquear os minijogos!'}
@@ -394,8 +420,13 @@ export default function App() {
                 existingProgress={view.progress}
                 onBack={() => setView({ name: 'lessons', module: view.module })}
                 onComplete={() => {
+                  const todayUtc = new Date().toISOString().split('T')[0];
+                  const todayLocal = new Date().toLocaleDateString('en-CA');
+                  try {
+                    localStorage.setItem(`daily_done_${currentProfile.id}_${todayUtc}`, 'true');
+                    localStorage.setItem(`daily_done_${currentProfile.id}_${todayLocal}`, 'true');
+                  } catch {}
                   setTodayCompleted(true);
-                  checkTodayProgress(currentProfile.id);
                   setView({ name: 'trail' });
                 }}
                 onStarsUpdated={loadUserProfile}
