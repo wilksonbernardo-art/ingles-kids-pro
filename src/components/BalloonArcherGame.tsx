@@ -37,7 +37,7 @@ type Balloon = {
   baseX: number;
   x: number;
   y: number;
-  speed: number;
+  speed: number; // Porcentagem de tela por segundo
   color: string;
   popped: boolean;
   wiggleSeed: number;
@@ -63,11 +63,12 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
   const targetWord = currentTarget.word;
   const targetLetter = targetWord[currentLetterIdx];
 
-  // Aumento sutil e gradual por nível (apenas 4% por palavra)
-  const currentSpeedMultiplier = 1 + wordIndex * 0.04;
+  // Aumento sutil de velocidade por nível
+  const currentSpeedMultiplier = 1 + wordIndex * 0.05;
 
   const nextBalloonId = useRef(1);
   const gameLoopRef = useRef<number | null>(null);
+  const lastTimeRef = useRef<number>(performance.now());
 
   const speakText = useCallback((text: string) => {
     if (!('speechSynthesis' in window)) return;
@@ -120,7 +121,7 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
     } catch {}
   }, []);
 
-  // Gerador de balões com ritmo mais tranquilo
+  // Gerador de balões
   useEffect(() => {
     if (gameOver || victory) return;
 
@@ -128,7 +129,7 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
       setBalloons((prev) => {
         if (prev.length >= 7) return prev;
 
-        const isBomb = Math.random() < 0.12; // 12% de chance de bomba
+        const isBomb = Math.random() < 0.12;
         const needTarget = !isBomb && Math.random() < 0.5;
         const letter = isBomb
           ? '💣'
@@ -136,7 +137,6 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
           ? targetLetter
           : String.fromCharCode(65 + Math.floor(Math.random() * 26));
 
-        // Posição horizontal bem espaçada
         const baseX = Math.floor(Math.random() * 70) + 15;
         const newBalloon: Balloon = {
           id: nextBalloonId.current++,
@@ -145,8 +145,8 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
           baseX,
           x: baseX,
           y: 108,
-          // Velocidade reduzida e confortável para crianças
-          speed: (Math.random() * 0.10 + 0.16) * currentSpeedMultiplier,
+          // Velocidade calibrada em % de tela por segundo (leva ~6 a 7 segundos para cruzar a tela de baixo até o topo)
+          speed: (14 + Math.random() * 4) * currentSpeedMultiplier,
           color: isBomb ? 'from-slate-700 to-slate-900' : BALLOON_COLORS[Math.floor(Math.random() * BALLOON_COLORS.length)],
           popped: false,
           wiggleSeed: Math.random() * 10,
@@ -159,20 +159,26 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
     return () => clearInterval(interval);
   }, [targetLetter, gameOver, victory, currentSpeedMultiplier]);
 
-  // Movimento suave dos balões
+  // Loop de física sincronizado pelo tempo real (Delta Time)
   useEffect(() => {
     if (gameOver || victory) return;
 
-    const updateFrame = () => {
-      const now = Date.now() / 600;
+    lastTimeRef.current = performance.now();
+
+    const updateFrame = (now: number) => {
+      // Delta time em segundos
+      const dt = Math.min((now - lastTimeRef.current) / 1000, 0.1);
+      lastTimeRef.current = now;
+
+      const timeSec = now / 1000;
 
       setBalloons((prev) => {
         const nextList: Balloon[] = [];
 
         for (const b of prev) {
-          const nextY = b.y - b.speed;
-          // Oscilação suave do vento (3% de variação)
-          const wiggleOffset = Math.sin(now + b.wiggleSeed) * 3.5;
+          // O movimento é multiplicado por dt, garantindo idêntica velocidade em 60Hz, 120Hz ou 144Hz
+          const nextY = b.y - b.speed * dt;
+          const wiggleOffset = Math.sin(timeSec * 2 + b.wiggleSeed) * 3.5;
           const nextX = Math.max(10, Math.min(90, b.baseX + wiggleOffset));
 
           // Letra correta escapou pelo topo
@@ -216,7 +222,6 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
     setArrowAnim({ x: balloon.x, y: balloon.y });
     setTimeout(() => setArrowAnim(null), 240);
 
-    // Acertou a bomba
     if (balloon.isBomb) {
       playSoundEffect('bomb');
       setBalloons((prev) => prev.map((b) => (b.id === balloon.id ? { ...b, popped: true } : b)));
@@ -228,7 +233,6 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
       return;
     }
 
-    // Acertou a letra certa
     if (balloon.letter === targetLetter) {
       playSoundEffect('pop');
       speakText(balloon.letter);
@@ -255,7 +259,6 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
         setCurrentLetterIdx(nextIdx);
       }
     } else {
-      // Letra errada
       playSoundEffect('miss');
       setLives((l) => {
         const nextLives = l - 1;
@@ -384,17 +387,15 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
               }}
               className="absolute flex flex-col items-center justify-center cursor-pointer transition-transform hover:scale-110 active:scale-95 group focus:outline-none"
             >
-              {/* Balão Gigante e Fácil de Clicar */}
+              {/* Balão com formato e tamanho consistente */}
               <div
                 className={`w-18 h-22 rounded-[50%] bg-gradient-to-t ${b.color} shadow-xl flex items-center justify-center text-white font-black text-3xl relative border-3 border-white/50 ${
                   b.isBomb ? 'animate-pulse ring-4 ring-rose-400' : ''
                 }`}
               >
                 {b.letter}
-                {/* Brilho do balão */}
                 <div className="absolute top-2.5 left-3 w-4 h-4 bg-white/45 rounded-full" />
               </div>
-              {/* Cordão do Balão */}
               <div className="w-1 h-5 bg-slate-400/80 -mt-0.5 rounded-full" />
             </button>
           );
