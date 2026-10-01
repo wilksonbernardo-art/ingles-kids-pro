@@ -4,6 +4,7 @@ import type { Module, Word } from '@/lib/supabase';
 import { supabase } from '@/lib/supabase';
 import { speakWord, playSuccessSound } from '@/lib/speech';
 import { celebrate } from '@/lib/confetti';
+import BalloonArcherGame from '@/components/BalloonArcherGame';
 
 function WordVisual({ word, size = 'md' }: { word: any; size?: 'sm' | 'md' | 'lg' }) {
   const sizeClasses = {
@@ -40,7 +41,7 @@ type PlaygroundProps = {
   profileStars: number;
 };
 
-type GameType = 'highway' | 'snake' | 'bubble' | 'memory' | 'speed' | 'builder' | 'colors' | 'shadow' | null;
+type GameType = 'highway' | 'snake' | 'bubble' | 'memory' | 'speed' | 'builder' | 'colors' | 'shadow' | 'archer' | null;
 
 export default function Playground({ profileId, onBack, onStarsUpdated, profileStars }: PlaygroundProps) {
   const [activeGame, setActiveGame] = useState<GameType>(null);
@@ -150,6 +151,13 @@ export default function Playground({ profileId, onBack, onStarsUpdated, profileS
           {/* Grid de Minijogos */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <GameCard
+              emoji="🏹"
+              title="Arqueiro de Balões"
+              desc="Mire e estoure os balões na ordem certa das letras em inglês!"
+              color="from-sky-500 via-indigo-500 to-purple-600"
+              onClick={() => setActiveGame('archer')}
+            />
+            <GameCard
               emoji="🏎️"
               title="Top Word Racer"
               desc="Estilo Top Gear! Ouça o som, mude de pista e passe pela placa certa na estrada!"
@@ -210,6 +218,12 @@ export default function Playground({ profileId, onBack, onStarsUpdated, profileS
       )}
 
       {/* Renderização do Jogo Ativo */}
+      {activeGame === 'archer' && (
+        <BalloonArcherGame
+          onBack={() => setActiveGame(null)}
+          onStarsEarned={(amount) => awardBonusStar(amount)}
+        />
+      )}
       {activeGame === 'highway' && (
         <GameTopRacer
           key="highway"
@@ -1448,7 +1462,7 @@ function GameSpeedTap({ pool, onWin }: { pool: Word[]; onWin: () => void }) {
   );
 }
 
-/* ==================== 5. WORD BUILDER (DESIGN IDÊNTICO AO DA IMAGEM COM BOTÃO DE ÁUDIO) ==================== */
+/* ==================== 5. WORD BUILDER ==================== */
 function GameWordBuilder({ pool = [], onWin }: { pool: Word[]; onWin: () => void }) {
   const poolRef = useRef<Word[]>([]);
   if (poolRef.current.length === 0 && pool && pool.length > 0) {
@@ -1522,24 +1536,20 @@ function GameWordBuilder({ pool = [], onWin }: { pool: Word[]; onWin: () => void
 
   return (
     <div className="w-full max-w-lg mx-auto bg-emerald-50/20 border-2 border-teal-300 rounded-[36px] p-6 sm:p-8 text-center overflow-hidden select-none shadow-sm">
-      {/* Badge WORD BUILDER */}
       <div className="flex justify-center mb-2">
         <span className="bg-teal-200 text-teal-800 text-[11px] font-black px-3.5 py-1 rounded-full uppercase tracking-wider">
           🔤 WORD BUILDER
         </span>
       </div>
 
-      {/* Ícone / Emoji */}
       <div className="text-6xl sm:text-7xl my-2 select-none">
         {target.emoji || '⭐'}
       </div>
 
-      {/* Palavra em Português */}
       <h3 className="text-xl sm:text-2xl font-black text-slate-800 mb-2">
         {target.word_pt}
       </h3>
 
-      {/* Botão de Repetir a Palavra em Inglês */}
       <div className="flex justify-center mb-4">
         <button
           type="button"
@@ -1551,7 +1561,6 @@ function GameWordBuilder({ pool = [], onWin }: { pool: Word[]; onWin: () => void
         </button>
       </div>
 
-      {/* Caixas de Montagem */}
       <div className="flex justify-center gap-1.5 sm:gap-2 my-4 flex-wrap max-w-md mx-auto">
         {targetChars.map((_, i) => {
           const char = picked[i] !== undefined ? scramble[picked[i]]?.char : '';
@@ -1566,7 +1575,6 @@ function GameWordBuilder({ pool = [], onWin }: { pool: Word[]; onWin: () => void
         })}
       </div>
 
-      {/* Teclado com Letras para Escolher */}
       <div className="flex justify-center gap-1.5 sm:gap-2.5 flex-wrap my-4 max-w-md mx-auto">
         {scramble.map((item, idx) => {
           const used = picked.includes(idx);
@@ -1588,7 +1596,6 @@ function GameWordBuilder({ pool = [], onWin }: { pool: Word[]; onWin: () => void
         })}
       </div>
 
-      {/* Botão de Limpar */}
       <div className="mt-4">
         <button
           type="button"
