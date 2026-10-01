@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { ArrowLeft, Volume2, Star, Heart, Trophy } from 'lucide-react';
 import type { Module, Word } from '@/lib/supabase';
 import { supabase } from '@/lib/supabase';
 import { speakWord, playSuccessSound } from '@/lib/speech';
 import { celebrate } from '@/lib/confetti';
 import BalloonArcherGame from '@/components/BalloonArcherGame';
+import LionDashGame from '@/components/LionDashGame';
 
 function WordVisual({ word, size = 'md' }: { word: any; size?: 'sm' | 'md' | 'lg' }) {
   const sizeClasses = {
@@ -41,7 +42,7 @@ type PlaygroundProps = {
   profileStars: number;
 };
 
-type GameType = 'highway' | 'snake' | 'bubble' | 'memory' | 'speed' | 'builder' | 'colors' | 'shadow' | 'archer' | null;
+type GameType = 'highway' | 'snake' | 'bubble' | 'memory' | 'speed' | 'builder' | 'colors' | 'shadow' | 'archer' | 'dash' | null;
 
 export default function Playground({ profileId, onBack, onStarsUpdated, profileStars }: PlaygroundProps) {
   const [activeGame, setActiveGame] = useState<GameType>(null);
@@ -151,12 +152,21 @@ export default function Playground({ profileId, onBack, onStarsUpdated, profileS
           {/* Grid de Minijogos */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <GameCard
+              emoji="🦁⚡"
+              title="Lion Dash: Word Runner"
+              desc="Estilo Subway Surfers! Corra em 3 pistas e passe pelos portais certos!"
+              color="from-indigo-600 via-purple-600 to-pink-600"
+              onClick={() => setActiveGame('dash')}
+            />
+
+            <GameCard
               emoji="🏹"
               title="Arqueiro de Balões"
               desc="Mire e estoure os balões na ordem certa das letras em inglês!"
               color="from-sky-500 via-indigo-500 to-purple-600"
               onClick={() => setActiveGame('archer')}
             />
+
             <GameCard
               emoji="🏎️"
               title="Top Word Racer"
@@ -164,6 +174,7 @@ export default function Playground({ profileId, onBack, onStarsUpdated, profileS
               color="from-amber-500 via-orange-500 to-rose-600"
               onClick={() => setActiveGame('highway')}
             />
+
             <GameCard
               emoji="🐍"
               title="Word Snake"
@@ -171,6 +182,7 @@ export default function Playground({ profileId, onBack, onStarsUpdated, profileS
               color="from-emerald-500 via-teal-500 to-green-600"
               onClick={() => setActiveGame('snake')}
             />
+
             <GameCard
               emoji="🎈"
               title="Bubble Pop"
@@ -178,6 +190,7 @@ export default function Playground({ profileId, onBack, onStarsUpdated, profileS
               color="from-blue-400 to-indigo-500"
               onClick={() => setActiveGame('bubble')}
             />
+
             <GameCard
               emoji="🧠"
               title="Jogo da Memória"
@@ -185,6 +198,7 @@ export default function Playground({ profileId, onBack, onStarsUpdated, profileS
               color="from-purple-500 to-indigo-600"
               onClick={() => setActiveGame('memory')}
             />
+
             <GameCard
               emoji="⚡"
               title="Speed Tap"
@@ -192,6 +206,7 @@ export default function Playground({ profileId, onBack, onStarsUpdated, profileS
               color="from-yellow-400 to-amber-500"
               onClick={() => setActiveGame('speed')}
             />
+
             <GameCard
               emoji="🔤"
               title="Word Builder"
@@ -199,6 +214,7 @@ export default function Playground({ profileId, onBack, onStarsUpdated, profileS
               color="from-teal-400 to-emerald-600"
               onClick={() => setActiveGame('builder')}
             />
+
             <GameCard
               emoji="🎨"
               title="Cores & Formas"
@@ -206,6 +222,7 @@ export default function Playground({ profileId, onBack, onStarsUpdated, profileS
               color="from-rose-400 to-pink-600"
               onClick={() => setActiveGame('colors')}
             />
+
             <GameCard
               emoji="🕵️‍♂️"
               title="Quem é essa Sombra?"
@@ -218,12 +235,22 @@ export default function Playground({ profileId, onBack, onStarsUpdated, profileS
       )}
 
       {/* Renderização do Jogo Ativo */}
+      {activeGame === 'dash' && (
+        <LionDashGame
+          pool={currentPool}
+          profileId={profileId}
+          onBack={() => setActiveGame(null)}
+          onWinBonus={(stars) => awardBonusStar(stars)}
+        />
+      )}
+
       {activeGame === 'archer' && (
         <BalloonArcherGame
           onBack={() => setActiveGame(null)}
           onStarsEarned={(amount) => awardBonusStar(amount)}
         />
       )}
+
       {activeGame === 'highway' && (
         <GameTopRacer
           key="highway"
@@ -232,18 +259,23 @@ export default function Playground({ profileId, onBack, onStarsUpdated, profileS
           onWin={() => awardBonusStar(2)}
         />
       )}
+
       {activeGame === 'snake' && (
         <GameWordSnake key="snake" pool={currentPool} onWin={() => awardBonusStar(3)} />
       )}
+
       {activeGame === 'bubble' && (
         <GameBubblePop key="bubble" pool={currentPool} onWin={() => awardBonusStar(2)} />
       )}
+
       {activeGame === 'memory' && (
         <GameMemoryMatch key="memory" pool={currentPool} onWin={() => awardBonusStar(3)} />
       )}
+
       {activeGame === 'speed' && (
         <GameSpeedTap key="speed" pool={currentPool} onWin={() => awardBonusStar(2)} />
       )}
+
       {activeGame === 'builder' && (
         <GameWordBuilder
           key="builder"
@@ -251,9 +283,11 @@ export default function Playground({ profileId, onBack, onStarsUpdated, profileS
           onWin={() => awardBonusStar(2)}
         />
       )}
+
       {activeGame === 'colors' && (
         <GameColorsMatch key="colors" pool={currentPool} onWin={() => awardBonusStar(2)} />
       )}
+
       {activeGame === 'shadow' && (
         <GameShadowHunter key="shadow" pool={currentPool} onWin={() => awardBonusStar(2)} />
       )}
@@ -451,7 +485,7 @@ function GameTopRacer({
       skyGrad.addColorStop(0.5, '#38bdf8');
       skyGrad.addColorStop(1, '#bae6fd');
       ctx.fillStyle = skyGrad;
-      ctx.fillRect(0, 0, SKY_W, SKY_H);
+      ctx.fillRect(0, 0, SKY_H);
 
       ctx.fillStyle = '#fef08a';
       ctx.beginPath();
