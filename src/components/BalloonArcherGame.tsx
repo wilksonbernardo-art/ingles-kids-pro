@@ -11,7 +11,7 @@ type WordTarget = {
 const WORDS_POOL: WordTarget[] = [
   { word: 'CAT', translation: 'Gato', emoji: '🐱' },
   { word: 'DOG', translation: 'Cachorro', emoji: '🐶' },
-  { word: 'SUN', translation: 'Sol', emoji: '☀️' },
+  { word: 'SUN', translation: 'Sol', emoji: '☀️️' },
   { word: 'STAR', translation: 'Estrela', emoji: '⭐' },
   { word: 'BOOK', translation: 'Livro', emoji: '📚' },
   { word: 'FISH', translation: 'Peixe', emoji: '🐟' },
@@ -81,7 +81,6 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
     canvasH: 480,
   });
 
-  // Mantém refs sincronizadas para evitar re-criação de loops
   useEffect(() => {
     gameStateRef.current.targetLetter = targetLetter;
     gameStateRef.current.wordIndex = wordIndex;
@@ -142,15 +141,15 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
     } catch {}
   }, []);
 
-  // Timer independente para gerar balões
+  // Gerador de balões mais dinâmico
   useEffect(() => {
     if (gameOver || victory) return;
 
     const interval = setInterval(() => {
       const state = gameStateRef.current;
-      if (!state.active || state.balloons.length >= 6) return;
+      if (!state.active || state.balloons.length >= 7) return;
 
-      const isBomb = Math.random() < 0.12;
+      const isBomb = Math.random() < 0.14;
       const needTarget = !isBomb && Math.random() < 0.55;
       const letter = isBomb
         ? '💣'
@@ -162,8 +161,8 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
       const h = state.canvasH;
       const baseX = Math.floor(Math.random() * (w - 140)) + 70;
 
-      // Velocidade idêntica em pixels por segundo
-      const speedPxPerSec = (65 + Math.random() * 20) * (1 + state.wordIndex * 0.04);
+      // VELOCIDADE DOBRADA (130 a 170 pixels por segundo)
+      const speedPxPerSec = (130 + Math.random() * 40) * (1 + state.wordIndex * 0.05);
 
       const newBalloon: InternalBalloon = {
         id: state.nextId++,
@@ -172,8 +171,8 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
         baseX,
         x: baseX,
         y: h + 60,
-        radiusX: 36, // Diâmetro generoso de 72px
-        radiusY: 44, // Altura 88px
+        radiusX: 36,
+        radiusY: 44,
         speed: speedPxPerSec,
         color: isBomb
           ? { main: '#334155', dark: '#0f172a', highlight: '#94a3b8' }
@@ -184,12 +183,12 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
       };
 
       state.balloons.push(newBalloon);
-    }, 1100);
+    }, 750);
 
     return () => clearInterval(interval);
   }, [gameOver, victory]);
 
-  // Loop de Renderização e Física no Canvas (Isolado de re-renders)
+  // Loop de Renderização e Física no Canvas
   useEffect(() => {
     let animId: number;
     gameStateRef.current.lastTime = performance.now();
@@ -206,17 +205,16 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
       const dt = Math.min((timestamp - state.lastTime) / 1000, 0.1);
       state.lastTime = timestamp;
 
-      // Limpeza do Canvas
       ctx.clearRect(0, 0, state.canvasW, state.canvasH);
 
-      // Fundo suave de céu
+      // Fundo céu
       const grad = ctx.createLinearGradient(0, 0, 0, state.canvasH);
       grad.addColorStop(0, '#bae6fd');
       grad.addColorStop(1, '#f0fdf4');
       ctx.fillStyle = grad;
       ctx.fillRect(0, 0, state.canvasW, state.canvasH);
 
-      // Nuvens decorativas ao fundo
+      // Nuvens
       ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
       ctx.beginPath();
       ctx.arc(60, 80, 35, 0, Math.PI * 2);
@@ -232,7 +230,6 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
       if (state.active) {
         const timeSec = timestamp / 1000;
 
-        // Atualização de posições com delta time absoluto
         for (let i = state.balloons.length - 1; i >= 0; i--) {
           const b = state.balloons[i];
 
@@ -244,10 +241,10 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
             }
           } else {
             b.y -= b.speed * dt;
-            const wiggle = Math.sin(timeSec * 2.5 + b.wiggleSeed) * 16;
+            const wiggle = Math.sin(timeSec * 3 + b.wiggleSeed) * 18;
             b.x = b.baseX + wiggle;
 
-            // Se a letra correta escapou pelo topo
+            // Letra correta escapou pelo topo
             if (b.y < -b.radiusY && b.letter === state.targetLetter && !b.isBomb) {
               playSoundEffect('miss');
               state.balloons.splice(i, 1);
@@ -259,17 +256,14 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
               continue;
             }
 
-            // Remove balões que saíram totalmente da tela
             if (b.y < -b.radiusY * 2) {
               state.balloons.splice(i, 1);
               continue;
             }
           }
 
-          // Desenho do balão
           ctx.save();
           if (b.popped) {
-            // Efeito de estouro
             ctx.translate(b.x, b.y);
             ctx.scale(1 + b.popProgress * 0.8, 1 + b.popProgress * 0.8);
             ctx.fillStyle = b.color.main;
@@ -279,7 +273,7 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
             ctx.textBaseline = 'middle';
             ctx.fillText(b.isBomb ? '💥' : '✨', 0, 0);
           } else {
-            // Cordão do balão
+            // Cordão
             ctx.beginPath();
             ctx.moveTo(b.x, b.y + b.radiusY);
             ctx.lineTo(b.x, b.y + b.radiusY + 16);
@@ -287,24 +281,23 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
             ctx.lineWidth = 2;
             ctx.stroke();
 
-            // Corpo do balão
+            // Balão
             ctx.beginPath();
             ctx.ellipse(b.x, b.y, b.radiusX, b.radiusY, 0, 0, Math.PI * 2);
             ctx.fillStyle = b.color.main;
             ctx.fill();
 
-            // Contorno
             ctx.lineWidth = 3;
             ctx.strokeStyle = b.color.dark;
             ctx.stroke();
 
-            // Brilho do balão
+            // Brilho
             ctx.beginPath();
             ctx.ellipse(b.x - b.radiusX * 0.35, b.y - b.radiusY * 0.35, 8, 12, -0.3, 0, Math.PI * 2);
             ctx.fillStyle = b.color.highlight;
             ctx.fill();
 
-            // Texto/Letra dentro do balão
+            // Letra
             ctx.fillStyle = '#ffffff';
             ctx.font = '900 32px sans-serif';
             ctx.textAlign = 'center';
@@ -316,9 +309,9 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
           ctx.restore();
         }
 
-        // Desenho da flecha voando
+        // Flecha mais rápida para acompanhar a velocidade dos balões
         if (state.arrow) {
-          state.arrow.progress += dt * 4.5;
+          state.arrow.progress += dt * 6.0;
           const currentArrowX = state.arrow.startX + (state.arrow.targetX - state.arrow.startX) * state.arrow.progress;
           const currentArrowY = state.arrow.startY + (state.arrow.targetY - state.arrow.startY) * state.arrow.progress;
 
@@ -340,7 +333,6 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
     return () => cancelAnimationFrame(animId);
   }, [playSoundEffect]);
 
-  // Disparo ao tocar no Canvas (Touch e Mouse unificados)
   const handlePointerInteraction = (clientX: number, clientY: number) => {
     const canvas = canvasRef.current;
     if (!canvas || gameOver || victory) return;
@@ -352,13 +344,11 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
     const clickX = (clientX - rect.left) * scaleX;
     const clickY = (clientY - rect.top) * scaleY;
 
-    // Ângulo do leão arqueiro
     const angle = (clickX - canvas.width / 2) * 0.12;
     setAimAngle(angle);
 
     const state = gameStateRef.current;
 
-    // Dispara animação da flecha
     state.arrow = {
       startX: canvas.width / 2,
       startY: canvas.height - 30,
@@ -369,14 +359,12 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
       progress: 0,
     };
 
-    // Procura colisão com balão (área generosa de toque)
     const hitBalloon = state.balloons.find(
-      (b) => !b.popped && Math.hypot(b.x - clickX, b.y - clickY) <= b.radiusY + 12
+      (b) => !b.popped && Math.hypot(b.x - clickX, b.y - clickY) <= b.radiusY + 14
     );
 
     if (!hitBalloon) return;
 
-    // Acertou BOMBA 💣
     if (hitBalloon.isBomb) {
       playSoundEffect('bomb');
       hitBalloon.popped = true;
@@ -388,7 +376,6 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
       return;
     }
 
-    // Acertou a letra CORRETA
     if (hitBalloon.letter === state.targetLetter) {
       playSoundEffect('pop');
       speakText(hitBalloon.letter);
@@ -414,7 +401,6 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
         setCurrentLetterIdx(nextIdx);
       }
     } else {
-      // Letra ERRADA
       playSoundEffect('miss');
       setLives((l) => {
         const next = l - 1;
@@ -518,7 +504,7 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
         </div>
       </div>
 
-      {/* Área do Jogo em Canvas Nativo (Sem lag do React) */}
+      {/* Área do Jogo em Canvas Nativo */}
       <div className="relative flex-1 w-full flex items-center justify-center p-2">
         <canvas
           ref={canvasRef}
