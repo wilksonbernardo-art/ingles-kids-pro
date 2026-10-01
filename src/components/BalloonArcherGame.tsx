@@ -11,7 +11,7 @@ type WordTarget = {
 const WORDS_POOL: WordTarget[] = [
   { word: 'CAT', translation: 'Gato', emoji: '🐱' },
   { word: 'DOG', translation: 'Cachorro', emoji: '🐶' },
-  { word: 'SUN', translation: 'Sol', emoji: '☀️️' },
+  { word: 'SUN', translation: 'Sol', emoji: '☀️' },
   { word: 'STAR', translation: 'Estrela', emoji: '⭐' },
   { word: 'BOOK', translation: 'Livro', emoji: '📚' },
   { word: 'FISH', translation: 'Peixe', emoji: '🐟' },
@@ -141,15 +141,15 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
     } catch {}
   }, []);
 
-  // Gerador de balões mais dinâmico
+  // Gerador de balões contínuo e rápido
   useEffect(() => {
     if (gameOver || victory) return;
 
     const interval = setInterval(() => {
       const state = gameStateRef.current;
-      if (!state.active || state.balloons.length >= 7) return;
+      if (!state.active || state.balloons.length >= 8) return;
 
-      const isBomb = Math.random() < 0.14;
+      const isBomb = Math.random() < 0.15;
       const needTarget = !isBomb && Math.random() < 0.55;
       const letter = isBomb
         ? '💣'
@@ -161,8 +161,8 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
       const h = state.canvasH;
       const baseX = Math.floor(Math.random() * (w - 140)) + 70;
 
-      // VELOCIDADE DOBRADA (130 a 170 pixels por segundo)
-      const speedPxPerSec = (130 + Math.random() * 40) * (1 + state.wordIndex * 0.05);
+      // VELOCIDADE ACELERADA (190 a 240 pixels por segundo)
+      const speedPxPerSec = (190 + Math.random() * 50) * (1 + state.wordIndex * 0.05);
 
       const newBalloon: InternalBalloon = {
         id: state.nextId++,
@@ -183,7 +183,7 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
       };
 
       state.balloons.push(newBalloon);
-    }, 750);
+    }, 550);
 
     return () => clearInterval(interval);
   }, [gameOver, victory]);
@@ -234,14 +234,14 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
           const b = state.balloons[i];
 
           if (b.popped) {
-            b.popProgress += dt * 4;
+            b.popProgress += dt * 4.5;
             if (b.popProgress >= 1) {
               state.balloons.splice(i, 1);
               continue;
             }
           } else {
             b.y -= b.speed * dt;
-            const wiggle = Math.sin(timeSec * 3 + b.wiggleSeed) * 18;
+            const wiggle = Math.sin(timeSec * 3.5 + b.wiggleSeed) * 18;
             b.x = b.baseX + wiggle;
 
             // Letra correta escapou pelo topo
@@ -309,9 +309,9 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
           ctx.restore();
         }
 
-        // Flecha mais rápida para acompanhar a velocidade dos balões
+        // Flecha ágil para acompanhar o ritmo
         if (state.arrow) {
-          state.arrow.progress += dt * 6.0;
+          state.arrow.progress += dt * 8.0;
           const currentArrowX = state.arrow.startX + (state.arrow.targetX - state.arrow.startX) * state.arrow.progress;
           const currentArrowY = state.arrow.startY + (state.arrow.targetY - state.arrow.startY) * state.arrow.progress;
 
@@ -360,7 +360,7 @@ export default function BalloonArcherGame({ onBack, onStarsEarned }: BalloonArch
     };
 
     const hitBalloon = state.balloons.find(
-      (b) => !b.popped && Math.hypot(b.x - clickX, b.y - clickY) <= b.radiusY + 14
+      (b) => !b.popped && Math.hypot(b.x - clickX, b.y - clickY) <= b.radiusY + 16
     );
 
     if (!hitBalloon) return;
