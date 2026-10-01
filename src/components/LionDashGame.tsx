@@ -5,7 +5,7 @@ import type { Word } from '@/lib/supabase';
 import { speakWord, playSuccessSound } from '@/lib/speech';
 
 type GateOption = {
-  lane: number;
+  lane: number; // -1, 0, 1
   word: Word;
   isCorrect: boolean;
 };
@@ -28,11 +28,10 @@ type LionDashGameProps = {
 };
 
 const LANE_X_OFFSET = 115;
-const ROAD_HORIZON_Y = 130;
+const ROAD_HORIZON_Y = 135;
 
 export default function LionDashGame({ pool = [], onBack, onWinBonus }: LionDashGameProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const eligibleWords = (pool || []).filter((w) => w && w.word_en && w.word_en.trim().length > 1);
 
   const [currentTarget, setCurrentTarget] = useState<Word | null>(null);
   const [score, setScore] = useState(0);
@@ -40,43 +39,75 @@ export default function LionDashGame({ pool = [], onBack, onWinBonus }: LionDash
   const [gameOver, setGameOver] = useState(false);
   const [combo, setCombo] = useState(0);
 
+  // Pool de palavras estável em ref para não causar re-execuções no React
+  const wordsPoolRef = useRef<Word[]>([]);
+  const queueIndexRef = useRef(0);
+
   const engineRef = useRef({
     lane: 0,
     playerX: 0,
     playerTargetX: 0,
-    speed: 1.1,
+    speed: 0.85, // Velocidade balanceada e constante
     progressZ: 0,
     gates: [] as GateOption[],
     particles: [] as Particle[],
     roadOffset: 0,
     active: true,
+    hasCheckedCollision: false,
+    waitingNextRound: false,
     lastTime: performance.now(),
     swipeStartX: 0,
     swipeStartY: 0,
+    score: 0,
+    lives: 3,
+    combo: 0,
   });
 
-  const setupRound = useCallback(() => {
-    if (eligibleWords.length < 3) return;
+  // Inicializa e embaralha a lista de palavras apenas uma vez
+  useEffect(() => {
+    const valid = (pool || []).filter((w) => w && w.word_en && w.word_en.trim().length > 1);
+    if (valid.length >= 3) {
+      wordsPoolRef.current = [...valid].sort(() => Math.random() - 0.5);
+    } else {
+      wordsPoolRef.current = valid;
+    }
+    queueIndexRef.current = 0;
+  }, [pool]);
 
-    const shuffled = [...eligibleWords].sort(() => Math.random() - 0.5);
-    const target = shuffled[0];
-    const decoy1 = shuffled[1];
-    const decoy2 = shuffled[2];
+  // Prepara a próxima palavra e os 3 portais
+  const nextRound = useCallback(() => {
+    const poolList = wordsPoolRef.current;
+    if (poolList.length < 3) return;
+
+    // Avança no array circular para nunca repetir a mesma palavra em looping
+    const target = poolList[queueIndexRef.current % poolList.length];
+    queueIndexRef.current++;
+
+    // Sorteia 2 opções erradas diferentes do alvo
+    const decoys = poolList.filter((w) => w.id !== target.id).sort(() => Math.random() - 0.5);
     const lanes = [-1, 0, 1].sort(() => Math.random() - 0.5);
 
-    engineRef.current.gates = [
+    const newGates: GateOption[] = [
       { lane: lanes[0], word: target, isCorrect: true },
-      { lane: lanes[1], word: decoy1, isCorrect: false },
-      { lane: lanes[2], word: decoy2, isCorrect: false },
+      { lane: lanes[1], word: decoys[0], isCorrect: false },
+      { lane: lanes[2], word: decoys[1], isCorrect: false },
     ];
-    engineRef.current.progressZ = 0;
+
+    const engine = engineRef.current;
+    engine.gates = newGates;
+    engine.progressZ = 0;
+    engine.hasCheckedCollision = false;
+    engine.waitingNextRound = false;
+
     setCurrentTarget(target);
     speakWord(target.word_en, (target as any).audio_url);
-  }, [eligibleWords]);
+  }, []);
 
   useEffect(() => {
-    setupRound();
-  }, [setupRound]);
+    if (wordsPoolRef.current.length >= 3) {
+      nextRound();
+    }
+  }, [nextRound]);
 
   const changeLane = useCallback((direction: 'left' | 'right') => {
     const engine = engineRef.current;
@@ -109,21 +140,22 @@ export default function LionDashGame({ pool = [], onBack, onWinBonus }: LionDash
   };
 
   const createBurst = (x: number, y: number, color: string) => {
-    for (let i = 0; i < 28; i++) {
+    for (let i = 0; i < 22; i++) {
       const angle = Math.random() * Math.PI * 2;
-      const speed = Math.random() * 5 + 2;
+      const spd = Math.random() * 4 + 2;
       engineRef.current.particles.push({
         x,
         y,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed,
+        vx: Math.cos(angle) * spd,
+        vy: Math.sin(angle) * spd,
         color,
-        size: Math.random() * 4 + 3,
+        size: Math.random() * 3 + 2,
         life: 1.0,
       });
     }
   };
 
+  // Loop de Renderização 2.5D fluido
   useEffect(() => {
     let animId: number;
     engineRef.current.lastTime = performance.now();
@@ -136,89 +168,94 @@ export default function LionDashGame({ pool = [], onBack, onWinBonus }: LionDash
       if (!ctx) return;
 
       const engine = engineRef.current;
-      const dt = Math.min((timestamp - engine.lastTime) / 1000, 0.1);
+      const dt = Math.min((timestamp - engine.lastTime) / 1000, 0.05);
       engine.lastTime = timestamp;
 
       const W = canvas.width;
       const H = canvas.height;
       const midX = W / 2;
 
+      // 1. Atualizar Física
       if (engine.active) {
         engine.playerTargetX = engine.lane * LANE_X_OFFSET;
-        engine.playerX += (engine.playerTargetX - engine.playerX) * 14 * dt;
-        engine.roadOffset = (engine.roadOffset + engine.speed * 40 * dt) % 1;
-        engine.progressZ += engine.speed * 0.35 * dt;
+        engine.playerX += (engine.playerTargetX - engine.playerX) * 12 * dt;
+        engine.roadOffset = (engine.roadOffset + engine.speed * 1.5 * dt) % 1;
+        engine.progressZ += engine.speed * 0.40 * dt;
 
-        if (engine.progressZ >= 0.88 && engine.progressZ <= 0.98) {
+        // Checagem de Colisão Única
+        if (!engine.hasCheckedCollision && engine.progressZ >= 0.88) {
+          engine.hasCheckedCollision = true;
           const hitGate = engine.gates.find((g) => g.lane === engine.lane);
+
           if (hitGate) {
-            engine.progressZ = 1.05;
             if (hitGate.isCorrect) {
               playSuccessSound();
-              confetti({ particleCount: 50, spread: 60, origin: { y: 0.7 } });
-              setScore((s) => s + 20);
-              setCombo((cb) => cb + 1);
+              confetti({ particleCount: 40, spread: 55, origin: { y: 0.7 } });
+              engine.score += 20;
+              engine.combo += 1;
+              setScore(engine.score);
+              setCombo(engine.combo);
               createBurst(midX + engine.playerX, H - 75, '#10b981');
               if (onWinBonus) onWinBonus(2);
             } else {
-              setLives((l) => {
-                const next = l - 1;
-                if (next <= 0) {
-                  engine.active = false;
-                  setGameOver(true);
-                }
-                return Math.max(0, next);
-              });
+              engine.lives -= 1;
+              engine.combo = 0;
+              setLives(engine.lives);
               setCombo(0);
               createBurst(midX + engine.playerX, H - 75, '#ef4444');
+
+              if (engine.lives <= 0) {
+                engine.active = false;
+                setGameOver(true);
+              }
             }
           }
         }
 
-        if (engine.progressZ >= 1.05) {
-          setupRound();
+        // Transição suave para o próximo portal sem congelamento
+        if (!engine.waitingNextRound && engine.progressZ >= 1.05) {
+          engine.waitingNextRound = true;
+          nextRound();
         }
       }
 
+      // 2. Renderização Visual
       // Céu
       const skyGrad = ctx.createLinearGradient(0, 0, 0, ROAD_HORIZON_Y);
-      skyGrad.addColorStop(0, '#4338ca');
-      skyGrad.addColorStop(0.5, '#7c3aed');
+      skyGrad.addColorStop(0, '#312e81');
+      skyGrad.addColorStop(0.5, '#6366f1');
       skyGrad.addColorStop(1, '#f43f5e');
       ctx.fillStyle = skyGrad;
       ctx.fillRect(0, 0, W, ROAD_HORIZON_Y);
 
-      // Sol
-      const sunGrad = ctx.createRadialGradient(midX, ROAD_HORIZON_Y, 10, midX, ROAD_HORIZON_Y, 70);
+      // Sol Neon de Fundo
+      const sunGrad = ctx.createRadialGradient(midX, ROAD_HORIZON_Y, 8, midX, ROAD_HORIZON_Y, 65);
       sunGrad.addColorStop(0, '#fef08a');
       sunGrad.addColorStop(0.6, '#f97316');
       sunGrad.addColorStop(1, 'rgba(249, 115, 22, 0)');
       ctx.fillStyle = sunGrad;
       ctx.beginPath();
-      ctx.arc(midX, ROAD_HORIZON_Y, 70, 0, Math.PI * 2);
+      ctx.arc(midX, ROAD_HORIZON_Y, 65, 0, Math.PI * 2);
       ctx.fill();
 
       // Montanhas
-      ctx.fillStyle = '#312e81';
+      ctx.fillStyle = '#1e1b4b';
       ctx.beginPath();
       ctx.moveTo(0, ROAD_HORIZON_Y);
-      ctx.lineTo(80, ROAD_HORIZON_Y - 35);
-      ctx.lineTo(160, ROAD_HORIZON_Y);
-      ctx.lineTo(240, ROAD_HORIZON_Y - 50);
-      ctx.lineTo(340, ROAD_HORIZON_Y);
-      ctx.lineTo(W, ROAD_HORIZON_Y - 30);
+      ctx.lineTo(70, ROAD_HORIZON_Y - 30);
+      ctx.lineTo(150, ROAD_HORIZON_Y);
+      ctx.lineTo(230, ROAD_HORIZON_Y - 45);
+      ctx.lineTo(330, ROAD_HORIZON_Y);
+      ctx.lineTo(W, ROAD_HORIZON_Y - 25);
       ctx.lineTo(W, ROAD_HORIZON_Y);
       ctx.closePath();
       ctx.fill();
 
-      // Grama
-      const groundGrad = ctx.createLinearGradient(0, ROAD_HORIZON_Y, 0, H);
-      groundGrad.addColorStop(0, '#064e3b');
-      groundGrad.addColorStop(1, '#022c22');
-      ctx.fillStyle = groundGrad;
+      // Terreno
+      ctx.fillStyle = '#064e3b';
       ctx.fillRect(0, ROAD_HORIZON_Y, W, H - ROAD_HORIZON_Y);
 
-      // Pista
+      // Pista Principal
       ctx.beginPath();
       ctx.moveTo(midX - 35, ROAD_HORIZON_Y);
       ctx.lineTo(midX + 35, ROAD_HORIZON_Y);
@@ -231,9 +268,9 @@ export default function LionDashGame({ pool = [], onBack, onWinBonus }: LionDash
       ctx.fillStyle = roadGrad;
       ctx.fill();
 
-      // Bordas Neon
+      // Linhas Neon das bordas
       ctx.strokeStyle = '#38bdf8';
-      ctx.lineWidth = 3.5;
+      ctx.lineWidth = 3;
       ctx.beginPath();
       ctx.moveTo(midX - 35, ROAD_HORIZON_Y);
       ctx.lineTo(midX - 185, H);
@@ -241,16 +278,16 @@ export default function LionDashGame({ pool = [], onBack, onWinBonus }: LionDash
       ctx.lineTo(midX + 185, H);
       ctx.stroke();
 
-      // Divisórias com movimento
-      const numLines = 8;
+      // Divisórias das 3 pistas com animação contínua
+      const numLines = 7;
       for (let i = 0; i < numLines; i++) {
         const pz = (i / numLines + engine.roadOffset) % 1;
         const lineY = ROAD_HORIZON_Y + (H - ROAD_HORIZON_Y) * pz;
-        const nextY = ROAD_HORIZON_Y + (H - ROAD_HORIZON_Y) * Math.min(pz + 0.05, 1);
+        const nextY = ROAD_HORIZON_Y + (H - ROAD_HORIZON_Y) * Math.min(pz + 0.06, 1);
         const spread = 20 + 95 * pz;
 
-        ctx.strokeStyle = `rgba(255, 255, 255, ${0.15 + pz * 0.4})`;
-        ctx.lineWidth = 1.5 + pz * 2.5;
+        ctx.strokeStyle = `rgba(255, 255, 255, ${0.12 + pz * 0.4})`;
+        ctx.lineWidth = 1.2 + pz * 2.2;
         ctx.beginPath();
         ctx.moveTo(midX - spread / 3, lineY);
         ctx.lineTo(midX - spread / 3, nextY);
@@ -259,7 +296,7 @@ export default function LionDashGame({ pool = [], onBack, onWinBonus }: LionDash
         ctx.stroke();
       }
 
-      // Portais
+      // 3. Portais Mágicos
       const z = engine.progressZ;
       if (z >= 0 && z <= 1.0) {
         const portalY = ROAD_HORIZON_Y + (H - ROAD_HORIZON_Y) * z;
@@ -273,56 +310,61 @@ export default function LionDashGame({ pool = [], onBack, onWinBonus }: LionDash
 
           ctx.save();
           ctx.translate(gateX, portalY - gateH / 2);
+
+          // Brilho do portal
           ctx.shadowColor = gate.isCorrect ? '#10b981' : '#f43f5e';
-          ctx.shadowBlur = 12 * scale;
+          ctx.shadowBlur = 10 * scale;
           ctx.strokeStyle = gate.isCorrect ? '#34d399' : '#fb7185';
-          ctx.lineWidth = 4 * scale;
+          ctx.lineWidth = 3.5 * scale;
 
           ctx.beginPath();
-          ctx.roundRect(-gateW / 2, -gateH / 2, gateW, gateH, 16 * scale);
+          ctx.roundRect(-gateW / 2, -gateH / 2, gateW, gateH, 14 * scale);
           ctx.stroke();
 
           const insideGrad = ctx.createLinearGradient(0, -gateH / 2, 0, gateH / 2);
           insideGrad.addColorStop(0, gate.isCorrect ? 'rgba(52, 211, 153, 0.45)' : 'rgba(244, 63, 94, 0.4)');
-          insideGrad.addColorStop(1, 'rgba(15, 23, 42, 0.8)');
+          insideGrad.addColorStop(1, 'rgba(15, 23, 42, 0.85)');
           ctx.fillStyle = insideGrad;
           ctx.fill();
 
           ctx.shadowBlur = 0;
-          ctx.font = `${Math.floor(36 * scale)}px sans-serif`;
+          ctx.font = `${Math.floor(34 * scale)}px sans-serif`;
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
-          ctx.fillText(gate.word.emoji || '📦', 0, -12 * scale);
+          ctx.fillText(gate.word.emoji || '📦', 0, -10 * scale);
 
           ctx.fillStyle = '#ffffff';
-          ctx.font = `900 ${Math.floor(13 * scale)}px sans-serif`;
+          ctx.font = `900 ${Math.floor(12 * scale)}px sans-serif`;
           ctx.fillText(gate.word.word_en, 0, 24 * scale);
           ctx.restore();
         });
       }
 
-      // Leão
+      // 4. Personagem (Leão)
       const playerY = H - 75;
       const currentX = midX + engine.playerX;
-      const bobbing = Math.sin(timestamp / 70) * 3.5;
+      const bobbing = Math.sin(timestamp / 75) * 3;
 
       ctx.save();
       ctx.translate(currentX, playerY + bobbing);
+
+      // Sombra suave
       ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
       ctx.beginPath();
-      ctx.ellipse(0, 28 - bobbing, 28, 9, 0, 0, Math.PI * 2);
+      ctx.ellipse(0, 26 - bobbing, 26, 8, 0, 0, Math.PI * 2);
       ctx.fill();
 
-      const tilt = (engine.playerTargetX - engine.playerX) * 0.04;
+      // Inclinação corporal ao mudar de pista
+      const tilt = (engine.playerTargetX - engine.playerX) * 0.035;
       ctx.rotate(tilt);
 
-      ctx.font = '56px sans-serif';
+      ctx.font = '54px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText('🦁', 0, 0);
       ctx.restore();
 
-      // Partículas
+      // 5. Partículas
       for (let i = engine.particles.length - 1; i >= 0; i--) {
         const p = engine.particles[i];
         p.x += p.vx;
@@ -343,29 +385,35 @@ export default function LionDashGame({ pool = [], onBack, onWinBonus }: LionDash
 
     animId = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(animId);
-  }, [setupRound, onWinBonus]);
+  }, [nextRound, onWinBonus]);
 
   const restartGame = () => {
+    const engine = engineRef.current;
+    engine.lives = 3;
+    engine.score = 0;
+    engine.combo = 0;
+    engine.active = true;
+    engine.lane = 0;
+    engine.playerX = 0;
     setLives(3);
     setScore(0);
     setCombo(0);
     setGameOver(false);
-    engineRef.current.active = true;
-    engineRef.current.lane = 0;
-    engineRef.current.playerX = 0;
-    setupRound();
+    queueIndexRef.current = 0;
+    nextRound();
   };
 
   if (!currentTarget) {
     return (
       <div className="text-center py-16 text-slate-400 font-bold">
-        A carregar palavras...
+        A carregar palavras do Safari...
       </div>
     );
   }
 
   return (
     <div className="relative w-full max-w-lg mx-auto bg-slate-900 rounded-3xl border-4 border-indigo-400 shadow-2xl overflow-hidden flex flex-col justify-between select-none">
+      {/* HUD Superior */}
       <div className="p-3.5 z-20 bg-slate-900/85 backdrop-blur-md rounded-b-3xl border-b border-indigo-500/40 shadow-lg">
         <div className="flex items-center justify-between gap-2 mb-2">
           <button
@@ -375,6 +423,7 @@ export default function LionDashGame({ pool = [], onBack, onWinBonus }: LionDash
             <ArrowLeft className="w-4 h-4" /> Sair
           </button>
 
+          {/* Vidas */}
           <div className="flex items-center gap-1 bg-slate-800/90 px-3 py-1 rounded-xl border border-rose-500/40">
             {[1, 2, 3].map((heart) => (
               <Heart
@@ -386,9 +435,10 @@ export default function LionDashGame({ pool = [], onBack, onWinBonus }: LionDash
             ))}
           </div>
 
+          {/* Pontos & Combo */}
           <div className="flex items-center gap-1.5">
             {combo > 1 && (
-              <span className="bg-amber-400 text-slate-950 text-[10px] font-black px-2 py-0.5 rounded-lg animate-bounce">
+              <span className="bg-amber-400 text-slate-950 text-[10px] font-black px-2 py-0.5 rounded-lg">
                 {combo}x COMBO! 🔥
               </span>
             )}
@@ -398,6 +448,7 @@ export default function LionDashGame({ pool = [], onBack, onWinBonus }: LionDash
           </div>
         </div>
 
+        {/* Missão da Palavra Alvo */}
         <div className="bg-gradient-to-r from-indigo-900/70 via-purple-900/70 to-indigo-900/70 border border-indigo-400/50 rounded-2xl p-2.5 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <span className="text-3xl filter drop-shadow-md">{currentTarget.emoji}</span>
@@ -420,6 +471,7 @@ export default function LionDashGame({ pool = [], onBack, onWinBonus }: LionDash
         </div>
       </div>
 
+      {/* Tela de Jogo Canvas 2.5D */}
       <div 
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
@@ -432,6 +484,7 @@ export default function LionDashGame({ pool = [], onBack, onWinBonus }: LionDash
           className="w-full max-w-[420px] aspect-[420/480] rounded-2xl shadow-2xl border-2 border-indigo-500/50 block touch-none"
         />
 
+        {/* Botões Grandes para Celular */}
         <button
           onClick={() => changeLane('left')}
           className="absolute left-4 bottom-6 w-14 h-14 bg-indigo-600/80 hover:bg-indigo-500 active:scale-90 border-2 border-white/50 rounded-2xl text-white font-black text-2xl flex items-center justify-center shadow-xl cursor-pointer"
@@ -452,6 +505,7 @@ export default function LionDashGame({ pool = [], onBack, onWinBonus }: LionDash
         </p>
       </div>
 
+      {/* Modal Game Over */}
       {gameOver && (
         <div className="absolute inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 z-40 animate-in zoom-in-95">
           <div className="bg-slate-900 border-2 border-rose-500 rounded-3xl p-6 text-center max-w-xs w-full shadow-2xl">
