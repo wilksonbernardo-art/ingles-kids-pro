@@ -895,7 +895,7 @@ function Step1Flashcards({ words, onComplete }: { words: Word[]; onComplete: () 
       </div>
       <h2 className="text-5xl md:text-6xl font-black text-slate-800 tracking-wide mb-2">{word.word_en}</h2>
       <p className="text-2xl text-indigo-600 font-bold mb-1">{word.word_pt}</p>
-      <p className="text-slate-400 font-medium text-base mb-8">{word.phonetic || ''}</p>
+      <p className="text-slate-400 font-medium text-base mb-8">{formatFriendlyPhonetic(word.phonetic)}</p>
 
       <button
         onClick={() => speakWord(word.word_en)}
