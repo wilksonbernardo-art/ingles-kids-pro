@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { getWordVisualData } from '@/lib/wordVisuals';
+import { getWordVisualElement } from '@/lib/wordVisuals';
 
 type WordVisualProps = {
   word?: {
@@ -12,8 +11,6 @@ type WordVisualProps = {
 };
 
 export default function WordVisual({ word, size = 'md', className = '' }: WordVisualProps) {
-  const [imgError, setImgError] = useState(false);
-
   const sizeStyles = {
     sm: 'w-8 h-8 text-2xl',
     md: 'w-12 h-12 text-4xl',
@@ -21,23 +18,33 @@ export default function WordVisual({ word, size = 'md', className = '' }: WordVi
     xl: 'w-24 h-24 text-7xl',
   };
 
-  const visualData = getWordVisualData(word?.word_en, word?.emoji, word?.image_url);
+  const visual = getWordVisualElement(word?.word_en, word?.emoji, word?.image_url);
 
-  if (visualData.imageUrl && !imgError) {
+  // 1. Se tem ilustração SVG dedicada no dicionário:
+  if (visual.type === 'svg') {
+    return (
+      <div className={`${sizeStyles[size].split(' ')[0]} ${sizeStyles[size].split(' ')[1]} flex items-center justify-center select-none pointer-events-none ${className}`}>
+        {visual.element}
+      </div>
+    );
+  }
+
+  // 2. Se tem imagem configurada (Supabase):
+  if (visual.type === 'image' && visual.url) {
     return (
       <img
-        src={visualData.imageUrl}
+        src={visual.url}
         alt={word?.word_en || 'word'}
         loading="lazy"
-        onError={() => setImgError(true)}
-        className={`${sizeStyles[size].split(' ')[0]} ${sizeStyles[size].split(' ')[1]} object-contain drop-shadow-md select-none pointer-events-none transition-transform ${className}`}
+        className={`${sizeStyles[size].split(' ')[0]} ${sizeStyles[size].split(' ')[1]} object-contain drop-shadow-md select-none pointer-events-none ${className}`}
       />
     );
   }
 
+  // 3. Fallback para emoji:
   return (
     <span className={`${sizeStyles[size].split(' ')[2]} select-none leading-none drop-shadow-xs ${className}`}>
-      {visualData.emoji}
+      {visual.emoji}
     </span>
   );
 }
