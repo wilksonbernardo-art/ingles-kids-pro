@@ -1,8 +1,11 @@
-import React from 'react';
+import type { ReactNode } from 'react';
 
-// Ilustrações Vetoriais Educativas (SVG nítido e colorido)
-export const WORD_SVG_MAP: Record<string, { svg: React.ReactNode; fallbackEmoji: string }> = {
-  // --- Quarto / Casa (Diferenciados com precisão) ---
+type SvgVisual = {
+  svg: ReactNode;
+  fallbackEmoji: string;
+};
+
+export const WORD_SVG_MAP: Record<string, SvgVisual> = {
   bed: {
     fallbackEmoji: '🛏️',
     svg: (
@@ -20,11 +23,20 @@ export const WORD_SVG_MAP: Record<string, { svg: React.ReactNode; fallbackEmoji:
     fallbackEmoji: '🧺',
     svg: (
       <svg viewBox="0 0 64 64" className="w-full h-full drop-shadow-md" fill="none">
-        {/* Lençol / Pano estendido e dobrado com ondas */}
         <path d="M12 20c8-4 20 4 38-2v24c-16 4-26-4-38 2V20z" fill="#93c5fd" />
         <path d="M12 28c8-4 20 4 38-2v6c-16 4-26-4-38 2v-6z" fill="#60a5fa" />
         <path d="M10 44c10-3 24 3 42-1v4c-18 4-32-2-42 1v-4z" fill="#3b82f6" />
-        {/* Dobraduras do tecido */}
+        <path d="M16 16c6-2 16 3 32-1l4 8c-14 3-24-3-32 1l-4-8z" fill="#dbeafe" />
+      </svg>
+    ),
+  },
+  sheets: {
+    fallbackEmoji: '🧺',
+    svg: (
+      <svg viewBox="0 0 64 64" className="w-full h-full drop-shadow-md" fill="none">
+        <path d="M12 20c8-4 20 4 38-2v24c-16 4-26-4-38 2V20z" fill="#93c5fd" />
+        <path d="M12 28c8-4 20 4 38-2v6c-16 4-26-4-38 2v-6z" fill="#60a5fa" />
+        <path d="M10 44c10-3 24 3 42-1v4c-18 4-32-2-42 1v-4z" fill="#3b82f6" />
         <path d="M16 16c6-2 16 3 32-1l4 8c-14 3-24-3-32 1l-4-8z" fill="#dbeafe" />
       </svg>
     ),
@@ -71,7 +83,6 @@ export const WORD_SVG_MAP: Record<string, { svg: React.ReactNode; fallbackEmoji:
     fallbackEmoji: '🌪️',
     svg: (
       <svg viewBox="0 0 64 64" className="w-full h-full drop-shadow-md" fill="none">
-        {/* Bagunça: Meia jogada, brinquedo torto e rabiscos */}
         <path d="M12 44c4-12 18-8 24-16s14 6 18-2" stroke="#ef4444" strokeWidth="3.5" strokeLinecap="round" />
         <circle cx="20" cy="22" r="6" fill="#eab308" />
         <rect x="36" y="36" width="14" height="10" rx="2" fill="#3b82f6" transform="rotate(15 36 36)" />
