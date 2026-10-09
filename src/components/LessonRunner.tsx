@@ -4,6 +4,7 @@ import type { Module, Word, LessonProgress } from '@/lib/supabase';
 import { supabase, LESSON_STEPS } from '@/lib/supabase';
 import { speakWord, playSuccessSound } from '@/lib/speech';
 import { celebrate } from '@/lib/confetti';
+import WordVisual from '@/components/WordVisual';
 
 type LessonRunnerProps = {
   module: Module;
@@ -394,7 +395,7 @@ export default function LessonRunner({
   );
 }
 
-/* ==================== PROVA AVALIATIVA SEM QUEDA DE TELA BRANCA ==================== */
+/* ==================== PROVA AVALIATIVA ==================== */
 type ExamPhase = 'listening' | 'spelling' | 'sound_match';
 
 interface ExamQuestion {
@@ -482,12 +483,26 @@ function WeeklyExamRunner({
     });
 
     soundMatchWords.forEach((target) => {
-      const wrong = words.filter((w) => w.id !== target.id).sort(() => Math.random() - 0.5).slice(0, 3);
+      const targetVisual = target.image_url || target.emoji || target.word_en.toLowerCase();
+      const seenVisuals = new Set<string>([targetVisual]);
+      const validWrong: Word[] = [];
+
+      const poolShuffled = words.filter((w) => w.id !== target.id).sort(() => Math.random() - 0.5);
+
+      for (const candidate of poolShuffled) {
+        const candidateVisual = candidate.image_url || candidate.emoji || candidate.word_en.toLowerCase();
+        if (!seenVisuals.has(candidateVisual)) {
+          seenVisuals.add(candidateVisual);
+          validWrong.push(candidate);
+        }
+        if (validWrong.length === 3) break;
+      }
+
       generated.push({
         id: qId++,
         phase: 'sound_match',
         target,
-        options: [target, ...wrong].sort(() => Math.random() - 0.5),
+        options: [target, ...validWrong].sort(() => Math.random() - 0.5),
       });
     });
 
@@ -565,7 +580,6 @@ function WeeklyExamRunner({
     if (answered) return;
     const targetClean = (q.target.word_en || '').toUpperCase().replace(/[^A-Z]/g, '');
 
-    // Proteção contra undefined em tempo de execução
     const currentSpelled = selectedLetterIndices
       .map((idx) => q.scrambledLetters?.[idx]?.char || '')
       .join('');
@@ -626,7 +640,9 @@ function WeeklyExamRunner({
                 }`}
               >
                 <div className="flex items-center gap-3 min-w-0">
-                  <span className="text-3xl shrink-0">{item.question.target.emoji || '⭐'}</span>
+                  <div className="w-10 h-10 flex items-center justify-center shrink-0">
+                    <WordVisual word={item.question.target} size="sm" />
+                  </div>
                   <div className="min-w-0">
                     <p className="font-extrabold text-slate-800 text-sm flex items-center gap-2">
                       <span>{item.question.target.word_en}</span>
@@ -728,7 +744,7 @@ function WeeklyExamRunner({
                     disabled={answered}
                     className={`p-4 rounded-2xl border-2 font-bold text-base transition-all cursor-pointer flex items-center justify-center gap-2 ${style}`}
                   >
-                    <span className="text-2xl">{opt.emoji || '⭐'}</span>
+                    <WordVisual word={opt} size="sm" />
                     <span>{opt.word_pt}</span>
                   </button>
                 );
@@ -741,13 +757,14 @@ function WeeklyExamRunner({
           <>
             <div>
               <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Toca nas letras para formar o nome!</p>
-              <div className="text-6xl my-2">{q.target.emoji || '⭐'}</div>
+              <div className="flex justify-center my-4">
+                <WordVisual word={q.target} size="lg" />
+              </div>
               <h3 className="text-xl font-black text-slate-800">{q.target.word_pt}</h3>
 
               <div className="flex justify-center gap-2 my-5 min-h-[48px] flex-wrap">
                 {Array.from({ length: targetCleanLength }).map((_, i) => {
                   const letterIdx = selectedLetterIndices[i];
-                  // Leitura 100% blindada contra undefined
                   const char = (letterIdx !== undefined && q.scrambledLetters && q.scrambledLetters[letterIdx])
                     ? q.scrambledLetters[letterIdx]?.char
                     : '';
@@ -848,7 +865,8 @@ function WeeklyExamRunner({
                     disabled={answered}
                     className={`py-6 rounded-2xl border-2 transition-all cursor-pointer flex flex-col items-center justify-center gap-1 ${cardStyle}`}
                   >
-                    <span className="text-5xl">{opt.emoji || '⭐'}</span>
+                    <WordVisual word={opt} size="lg" />
+                    <span className="text-xs font-black text-slate-700 mt-2">{opt.word_pt}</span>
                   </button>
                 );
               })}
@@ -872,7 +890,9 @@ function Step1Flashcards({ words, onComplete }: { words: Word[]; onComplete: () 
       <h3 className="text-2xl font-extrabold text-slate-800 mb-1">🔊 Flashcards & Pronúncia</h3>
       <p className="text-slate-400 text-base mb-8">Toca para ouvir o áudio e repete bem alto!</p>
 
-      <div className="text-8xl md:text-9xl mb-6 select-none drop-shadow-sm">{word.emoji || '⭐'}</div>
+      <div className="flex justify-center mb-6">
+        <WordVisual word={word} size="xl" />
+      </div>
       <h2 className="text-5xl md:text-6xl font-black text-slate-800 tracking-wide mb-2">{word.word_en}</h2>
       <p className="text-2xl text-indigo-600 font-bold mb-1">{word.word_pt}</p>
       <p className="text-slate-400 font-medium text-base mb-8">{word.phonetic || ''}</p>
@@ -909,7 +929,9 @@ function Step2Offline({ words, onComplete }: { words: Word[]; onComplete: () => 
         <div className="flex justify-around gap-4 my-4 bg-white/90 p-5 rounded-2xl shadow-xs">
           {drawWords.map((w) => (
             <div key={w.id} className="text-center">
-              <div className="text-5xl mb-2">{w.emoji || '⭐'}</div>
+              <div className="flex justify-center mb-2">
+                <WordVisual word={w} size="md" />
+              </div>
               <p className="font-black text-slate-800 text-base">{w.word_en}</p>
               <p className="text-xs text-slate-500 font-semibold">{w.word_pt}</p>
             </div>
@@ -1156,7 +1178,7 @@ function SubGameListening({ words, onFinish }: { words: Word[]; onFinish: () => 
               disabled={answered}
               className={`p-4 rounded-2xl border-2 font-bold transition-all cursor-pointer flex flex-col items-center justify-center gap-1 shadow-xs active:scale-95 ${btnStyle}`}
             >
-              <span className="text-4xl">{opt.emoji || '⭐'}</span>
+              <WordVisual word={opt} size="md" />
               <span className="text-xs font-extrabold mt-1">{opt.word_pt}</span>
             </button>
           );
@@ -1231,9 +1253,7 @@ function SubGameMemory({ words, onFinish }: { words: Word[]; onFinish: () => voi
           >
             {c.flipped || c.matched ? (
               <div className="flex flex-col items-center justify-center h-full w-full">
-                <span className="text-3xl sm:text-4xl drop-shadow-xs select-none">
-                  {c.word.emoji || '⭐'}
-                </span>
+                <WordVisual word={c.word} size="md" />
                 <span className="text-[11px] sm:text-xs font-black text-slate-800 mt-1.5 truncate max-w-full px-1">
                   {c.word.word_en}
                 </span>
@@ -1287,7 +1307,6 @@ function SubGameSpelling({ words, onFinish }: { words: Word[]; onFinish: () => v
   };
 
   const handleCheckSpelling = () => {
-    // Proteção de leitura do índice
     const currentWord = pickedIndices
       .map((i) => scramble[i]?.char || '')
       .join('');
@@ -1326,9 +1345,12 @@ function SubGameSpelling({ words, onFinish }: { words: Word[]; onFinish: () => v
         >
           <Volume2 className="w-9 h-9" />
         </button>
-        <p className="text-xs text-slate-500 font-bold mt-2.5">
-          Significado em português: <strong className="text-slate-800">{target.word_pt}</strong> {target.emoji}
-        </p>
+        <div className="flex items-center justify-center gap-2 mt-2.5">
+          <p className="text-xs text-slate-500 font-bold">
+            Significado em português: <strong className="text-slate-800">{target.word_pt}</strong>
+          </p>
+          <WordVisual word={target} size="sm" />
+        </div>
       </div>
 
       <div className="flex justify-center gap-2 sm:gap-2.5 my-6 flex-wrap">
@@ -1478,7 +1500,7 @@ function SubGameBalloon({ words, onFinish }: { words: Word[]; onFinish: () => vo
               }`}
               style={{ animationDuration: '2.5s' }}
             >
-              <span className="text-4xl">{opt.emoji || '🎈'}</span>
+              <WordVisual word={opt} size="md" />
               <span className="text-xs font-bold text-slate-600 mt-1">{opt.word_pt}</span>
             </button>
           );
@@ -1498,7 +1520,9 @@ function Step4RealChallenge({ words, onShowPin }: { words: Word[]; onShowPin: ()
         <div className="flex justify-around gap-4 bg-white/90 p-4 rounded-2xl max-w-md mx-auto shadow-xs">
           {challengeWords.map((w) => (
             <div key={w.id} className="text-center">
-              <div className="text-4xl mb-1">{w.emoji || '⭐'}</div>
+              <div className="flex justify-center mb-1">
+                <WordVisual word={w} size="sm" />
+              </div>
               <p className="font-black text-slate-800 text-base">{w.word_en}</p>
             </div>
           ))}
