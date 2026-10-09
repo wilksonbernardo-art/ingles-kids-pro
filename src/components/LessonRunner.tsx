@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, Volume2, Check, Lock, Star, Pencil, ChevronRight, Trophy } from 'lucide-react';
+import { ArrowLeft, Volume2, Check, Lock, Star, Pencil, ChevronRight } from 'lucide-react';
 import type { Module, Word, LessonProgress } from '@/lib/supabase';
 import { supabase, LESSON_STEPS } from '@/lib/supabase';
 import { speakWord, playSuccessSound } from '@/lib/speech';
@@ -49,7 +49,6 @@ export default function LessonRunner({
       setLoading(true);
 
       if (isExam) {
-        // Na prova (Dia 6), carrega todas as palavras do módulo (Aulas 1 a 5)
         const { data, error } = await supabase
           .from('words')
           .select('*')
@@ -58,7 +57,6 @@ export default function LessonRunner({
 
         if (!error && data) setWords(data as Word[]);
       } else {
-        // Aulas regulares (1 a 5)
         let targetLessonId: string | null = null;
         if (lessonDay) {
           const { data: lessonData } = await supabase
@@ -143,11 +141,10 @@ export default function LessonRunner({
     }
   }
 
-async function finishLesson(customScoreBonus?: number) {
+  async function finishLesson(customScoreBonus?: number) {
     const bonusToAward = customScoreBonus !== undefined ? customScoreBonus : LESSON_BONUS;
     const todayStr = new Date().toISOString().split('T')[0];
 
-    // 1. GARANTIA LOCAL IMEDIATA (libera os jogos mesmo se o Supabase engasgar)
     try {
       localStorage.setItem(`daily_done_${profileId}_${todayStr}`, 'true');
       localStorage.setItem(`lesson_completed_${profileId}_${module.id}_${lessonDay}`, 'true');
@@ -155,11 +152,10 @@ async function finishLesson(customScoreBonus?: number) {
       console.warn('Erro ao salvar no localStorage:', e);
     }
 
-    // 2. SALVAR NO SUPABASE COM TODOS OS IDENTIFICADORES PREENCHIDOS
     try {
       const payload = {
         profile_id: profileId,
-        user_id: profileId, // Preenche ambos com o ID para nunca falhar por campo nulo
+        user_id: profileId,
         module_id: String(module.id),
         lesson_day: Number(lessonDay),
         current_step: 4,
@@ -167,10 +163,8 @@ async function finishLesson(customScoreBonus?: number) {
         completed_at: new Date().toISOString(),
       };
 
-      let saveError = null;
-
       if (existingProgress?.id) {
-        const { error } = await supabase
+        await supabase
           .from('lesson_progress')
           .update({
             status: 'completed',
@@ -179,24 +173,15 @@ async function finishLesson(customScoreBonus?: number) {
             user_id: profileId,
           })
           .eq('id', existingProgress.id);
-        saveError = error;
       } else {
-        const { error } = await supabase
+        await supabase
           .from('lesson_progress')
           .upsert(payload, { onConflict: 'profile_id,module_id,lesson_day' });
-        saveError = error;
-      }
-
-      if (saveError) {
-        console.error('Erro detalhado no Supabase ao salvar lesson_progress:', saveError);
-      } else {
-        console.log('Lição salva com sucesso absoluto no Supabase!');
       }
     } catch (err) {
       console.error('Exceção ao salvar lesson_progress:', err);
     }
 
-    // 3. ATUALIZAR ESTRELAS E STREAK NO PERFIL
     try {
       const { data: profileData } = await supabase
         .from('profiles')
@@ -221,7 +206,6 @@ async function finishLesson(customScoreBonus?: number) {
       console.warn('Erro ao atualizar estrelas do perfil:', err);
     }
 
-    // 4. FEEDBACK VISUAL E TRANSIÇÃO IMEDIATA
     try {
       onStarsUpdated();
     } catch (e) {}
@@ -250,7 +234,6 @@ async function finishLesson(customScoreBonus?: number) {
     );
   }
 
-  // Se for a PROVA AVALIATIVA (Dia 6)
   if (isExam) {
     return (
       <WeeklyExamRunner
@@ -265,7 +248,6 @@ async function finishLesson(customScoreBonus?: number) {
     );
   }
 
-  // TELA DE CONCLUSÃO DE AULA REGULAR (DIAS 1 A 5)
   if (lessonComplete) {
     return (
       <div className="max-w-4xl mx-auto px-4 py-8 text-center">
@@ -297,20 +279,18 @@ async function finishLesson(customScoreBonus?: number) {
 
   return (
     <div className="w-full max-w-5xl mx-auto px-4 md:px-8 py-4">
-      {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <button onClick={onBack} className="flex items-center gap-1.5 text-slate-500 hover:text-slate-800 font-bold text-sm cursor-pointer">
           <ArrowLeft className="w-5 h-5" />
           Sair da Aula
         </button>
         <div className="text-center">
-          <p className="font-extrabold text-slate-800 text-lg">Aula {lessonDay} • {module.title || module.title_pt}</p>
+          <p className="font-extrabold text-slate-800 text-lg">Aula {lessonDay}: {module.title || module.title_pt}</p>
           <span className="text-xs text-slate-400 font-semibold">{module.title_en}</span>
         </div>
         <div className="w-16" />
       </div>
 
-      {/* Indicadores de Passo */}
       <div className="flex items-center justify-center gap-3 mb-5">
         {LESSON_STEPS.map((s, i) => {
           const stepNum = i + 1;
@@ -343,7 +323,6 @@ async function finishLesson(customScoreBonus?: number) {
         })}
       </div>
 
-      {/* Timer Panorâmico */}
       <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-5 mb-6">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-3.5">
@@ -370,7 +349,6 @@ async function finishLesson(customScoreBonus?: number) {
         </div>
       </div>
 
-      {/* Conteúdo da Aula Regular */}
       <div className="bg-white rounded-3xl shadow-md border border-slate-100 p-8 md:p-12 min-h-[420px] flex flex-col justify-center">
         {currentStep === 1 && <Step1Flashcards words={words} onComplete={() => completeStep(1)} />}
         {currentStep === 2 && <Step2Offline words={words} onComplete={() => completeStep(2)} />}
@@ -378,7 +356,6 @@ async function finishLesson(customScoreBonus?: number) {
         {currentStep === 4 && <Step4RealChallenge words={words} onShowPin={() => setShowPinModal(true)} />}
       </div>
 
-      {/* Modal PIN dos Pais */}
       {showPinModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4" onClick={() => setShowPinModal(false)}>
           <div className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-xs border border-slate-100" onClick={(e) => e.stopPropagation()}>
@@ -417,7 +394,7 @@ async function finishLesson(customScoreBonus?: number) {
   );
 }
 
-/* ==================== PROVA AVALIATIVA COM GABARITO VISÍVEL & FILTRO DE LETRAS ==================== */
+/* ==================== PROVA AVALIATIVA SEM QUEDA DE TELA BRANCA ==================== */
 type ExamPhase = 'listening' | 'spelling' | 'sound_match';
 
 interface ExamQuestion {
@@ -456,14 +433,12 @@ function WeeklyExamRunner({
   const [examFinished, setExamFinished] = useState(false);
 
   useEffect(() => {
-    if (words.length < 5) return;
+    if (!words || words.length < 5) return;
 
     const shuffled = [...words].sort(() => Math.random() - 0.5);
 
-    // FILTRO INTELIGENTE: Palavras para a Fase de Soletração precisam de ter pelo menos 3 letras!
-    // No caso do alfabeto (onde cada item é 1 letra só), usamos palavras de suporte ou convertemos para Listening/Visual
     const eligibleForSpelling = shuffled.filter(
-      (w) => w.word_en.trim().replace(/[^A-Za-z]/g, '').length >= 3
+      (w) => w.word_en && w.word_en.trim().replace(/[^A-Za-z]/g, '').length >= 3
     );
 
     let spellingWords: Word[] = [];
@@ -471,8 +446,6 @@ function WeeklyExamRunner({
       spellingWords = eligibleForSpelling.slice(0, 3);
     }
 
-    // Se o módulo não tiver palavras com 3+ letras (como o Alfabeto puro),
-    // substituímos a soletração por mais perguntas de Reconhecimento e Listening!
     const remainingWords = shuffled.filter((w) => !spellingWords.some((sw) => sw.id === w.id));
 
     const listeningCount = spellingWords.length > 0 ? 4 : 5;
@@ -484,7 +457,6 @@ function WeeklyExamRunner({
     const generated: ExamQuestion[] = [];
     let qId = 1;
 
-    // Fase 1: Listening
     listeningWords.forEach((target) => {
       const wrong = words.filter((w) => w.id !== target.id).sort(() => Math.random() - 0.5).slice(0, 3);
       generated.push({
@@ -495,7 +467,6 @@ function WeeklyExamRunner({
       });
     });
 
-    // Fase 2: Soletração (Apenas se tiver palavras reais de 3+ letras!)
     spellingWords.forEach((target) => {
       const letters = target.word_en.toUpperCase().replace(/[^A-Z]/g, '').split('');
       const scrambled = letters
@@ -510,7 +481,6 @@ function WeeklyExamRunner({
       });
     });
 
-    // Fase 3: Som -> 4 Imagens Grandes
     soundMatchWords.forEach((target) => {
       const wrong = words.filter((w) => w.id !== target.id).sort(() => Math.random() - 0.5).slice(0, 3);
       generated.push({
@@ -593,16 +563,17 @@ function WeeklyExamRunner({
 
   const handleConfirmSpelling = () => {
     if (answered) return;
-    const targetClean = q.target.word_en.toUpperCase().replace(/[^A-Z]/g, '');
+    const targetClean = (q.target.word_en || '').toUpperCase().replace(/[^A-Z]/g, '');
+
+    // Proteção contra undefined em tempo de execução
     const currentSpelled = selectedLetterIndices
-      .map((idx) => q.scrambledLetters![idx].char)
+      .map((idx) => q.scrambledLetters?.[idx]?.char || '')
       .join('');
 
     const isCorrect = currentSpelled === targetClean;
     advanceWithRecord(isCorrect, currentSpelled || '(Em branco)', targetClean);
   };
 
-  // TELA FINAL: RESULTADO + GABARITO COMPLETO NA MESMA TELA
   if (examFinished) {
     const finalStars = score * 5;
     const percentage = Math.round((score / totalQuestions) * 100);
@@ -640,7 +611,6 @@ function WeeklyExamRunner({
           </button>
         </div>
 
-        {/* Gabarito Detalhado */}
         <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-6">
           <h3 className="font-extrabold text-slate-800 text-lg mb-1 flex items-center gap-2">
             📋 Gabarito & Correção das Questões
@@ -698,12 +668,11 @@ function WeeklyExamRunner({
     );
   }
 
-  const targetCleanLength = q.target.word_en.toUpperCase().replace(/[^A-Z]/g, '').length;
+  const targetCleanLength = (q.target.word_en || '').toUpperCase().replace(/[^A-Z]/g, '').length;
   const isSpellingComplete = selectedLetterIndices.length === targetCleanLength;
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-4">
-      {/* Topo da Prova */}
       <div className="flex items-center justify-between mb-4">
         <button onClick={onBack} className="flex items-center gap-1.5 text-slate-500 hover:text-slate-800 font-bold text-sm cursor-pointer">
           <ArrowLeft className="w-5 h-5" />
@@ -726,10 +695,7 @@ function WeeklyExamRunner({
         </div>
       </div>
 
-      {/* Card da Prova */}
       <div className="bg-white rounded-3xl shadow-md border-2 border-slate-100 p-8 text-center min-h-[420px] flex flex-col justify-between">
-        
-        {/* FASE 1: LISTENING */}
         {q.phase === 'listening' && (
           <>
             <div>
@@ -771,7 +737,6 @@ function WeeklyExamRunner({
           </>
         )}
 
-        {/* FASE 2: SOLETRAÇÃO (SE A PALAVRA TIVER 3+ LETRAS) */}
         {q.phase === 'spelling' && (
           <>
             <div>
@@ -779,11 +744,13 @@ function WeeklyExamRunner({
               <div className="text-6xl my-2">{q.target.emoji || '⭐'}</div>
               <h3 className="text-xl font-black text-slate-800">{q.target.word_pt}</h3>
 
-              {/* Caixas das Letras */}
               <div className="flex justify-center gap-2 my-5 min-h-[48px] flex-wrap">
                 {Array.from({ length: targetCleanLength }).map((_, i) => {
                   const letterIdx = selectedLetterIndices[i];
-                  const char = letterIdx !== undefined ? q.scrambledLetters![letterIdx].char : '';
+                  // Leitura 100% blindada contra undefined
+                  const char = (letterIdx !== undefined && q.scrambledLetters && q.scrambledLetters[letterIdx])
+                    ? q.scrambledLetters[letterIdx]?.char
+                    : '';
 
                   return (
                     <div
@@ -803,13 +770,12 @@ function WeeklyExamRunner({
               </div>
             </div>
 
-            {/* Teclado de Letras */}
             <div className="flex flex-wrap justify-center gap-2.5 my-2">
               {q.scrambledLetters?.map((item, i) => {
                 const isUsed = selectedLetterIndices.includes(i);
                 return (
                   <button
-                    key={item.id}
+                    key={item?.id ?? i}
                     onClick={() => handlePickLetter(i)}
                     disabled={isUsed || answered}
                     className={`w-12 h-12 rounded-2xl border-2 font-black text-lg transition-all ${
@@ -818,13 +784,12 @@ function WeeklyExamRunner({
                         : 'border-slate-200 bg-white hover:border-indigo-500 text-slate-700 shadow-sm active:scale-95 cursor-pointer'
                     }`}
                   >
-                    {item.char}
+                    {item?.char || ''}
                   </button>
                 );
               })}
             </div>
 
-            {/* Ações */}
             <div className="flex items-center justify-center gap-3 mt-4">
               <button
                 type="button"
@@ -851,7 +816,6 @@ function WeeklyExamRunner({
           </>
         )}
 
-        {/* FASE 3: OUVE E ENCONTRA A IMAGEM */}
         {q.phase === 'sound_match' && (
           <>
             <div>
@@ -963,7 +927,7 @@ function Step2Offline({ words, onComplete }: { words: Word[]; onComplete: () => 
   );
 }
 
-/* ==================== PASSO 3: CIRCUITO DE 4 MINIJOGOS COMPLETOS ==================== */
+/* ==================== PASSO 3: CIRCUITO DE 4 MINIJOGOS ==================== */
 function Step3MiniGames({ words, onComplete }: { words: Word[]; onComplete: () => void }) {
   const [currentGame, setCurrentGame] = useState<1 | 2 | 3 | 4>(1);
   const [game1Done, setGame1Done] = useState(false);
@@ -971,7 +935,6 @@ function Step3MiniGames({ words, onComplete }: { words: Word[]; onComplete: () =
   const [game3Done, setGame3Done] = useState(false);
   const [game4Done, setGame4Done] = useState(false);
 
-  // Congela as palavras da lição para não recriar com o timer
   const lessonWords = useRef<Word[]>([]);
   useEffect(() => {
     if (lessonWords.current.length === 0 && words.length > 0) {
@@ -995,7 +958,6 @@ function Step3MiniGames({ words, onComplete }: { words: Word[]; onComplete: () =
     );
   }
 
-  // Quando todos os 4 jogos forem finalizados
   if (game1Done && game2Done && game3Done && game4Done) {
     return (
       <div className="text-center py-6 max-w-md mx-auto">
@@ -1016,7 +978,6 @@ function Step3MiniGames({ words, onComplete }: { words: Word[]; onComplete: () =
 
   return (
     <div className="w-full max-w-2xl mx-auto py-2">
-      {/* Navegador das 4 Fases */}
       <div className="flex items-center justify-center gap-1.5 md:gap-2 mb-6 flex-wrap">
         <span
           className={`px-3 py-1 rounded-full text-xs font-black ${
@@ -1067,7 +1028,6 @@ function Step3MiniGames({ words, onComplete }: { words: Word[]; onComplete: () =
         </span>
       </div>
 
-      {/* JOGO 1: ESCUTA & ENCONTRA */}
       {currentGame === 1 && (
         <SubGameListening
           key="subgame-1"
@@ -1080,7 +1040,6 @@ function Step3MiniGames({ words, onComplete }: { words: Word[]; onComplete: () =
         />
       )}
 
-      {/* JOGO 2: JOGO DA MEMÓRIA AMPLIADO (12 CARTAS / 6 PARES) */}
       {currentGame === 2 && (
         <SubGameMemory
           key="subgame-2"
@@ -1093,7 +1052,6 @@ function Step3MiniGames({ words, onComplete }: { words: Word[]; onComplete: () =
         />
       )}
 
-      {/* JOGO 3: OUVE & ESCREVE / DIGITAÇÃO EM INGLÊS */}
       {currentGame === 3 && (
         <SubGameSpelling
           key="subgame-3"
@@ -1106,7 +1064,6 @@ function Step3MiniGames({ words, onComplete }: { words: Word[]; onComplete: () =
         />
       )}
 
-      {/* JOGO 4: BALÃO MÁGICO */}
       {currentGame === 4 && (
         <SubGameBalloon
           key="subgame-4"
@@ -1143,7 +1100,7 @@ function SubGameListening({ words, onFinish }: { words: Word[]; onFinish: () => 
       lastSpokenRound.current = round;
       speakWord(target.word_en);
     }
-  }, [round]);
+  }, [round, target, words]);
 
   const handlePick = (w: Word) => {
     if (answered) return;
@@ -1209,7 +1166,7 @@ function SubGameListening({ words, onFinish }: { words: Word[]; onFinish: () => 
   );
 }
 
-/* ==================== SUB-JOGO 2: SUPER MEMÓRIA (QUADRADO PERFEITO) ==================== */
+/* ==================== SUB-JOGO 2: SUPER MEMÓRIA ==================== */
 function SubGameMemory({ words, onFinish }: { words: Word[]; onFinish: () => void }) {
   type Card = { uid: string; word: Word; flipped: boolean; matched: boolean };
   const [cards, setCards] = useState<Card[]>([]);
@@ -1221,7 +1178,7 @@ function SubGameMemory({ words, onFinish }: { words: Word[]; onFinish: () => voi
       deck.push({ uid: `${w.id}-2`, word: w, flipped: false, matched: false });
     });
     setCards(deck.sort(() => Math.random() - 0.5));
-  }, []);
+  }, [words]);
 
   const handleCardClick = (card: Card) => {
     if (card.flipped || card.matched) return;
@@ -1261,7 +1218,6 @@ function SubGameMemory({ words, onFinish }: { words: Word[]; onFinish: () => voi
         Encontre os pares das palavras de hoje!
       </p>
 
-      {/* Grid com Proporção Quadrada Perfeita */}
       <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 sm:gap-4 w-full">
         {cards.map((c) => (
           <button
@@ -1296,7 +1252,7 @@ function SubGameMemory({ words, onFinish }: { words: Word[]; onFinish: () => voi
   );
 }
 
-/* ==================== SUB-JOGO 3: OUVE & ESCREVE (QUADRADINHOS PERFEITOS) ==================== */
+/* ==================== SUB-JOGO 3: OUVE & ESCREVE ==================== */
 function SubGameSpelling({ words, onFinish }: { words: Word[]; onFinish: () => void }) {
   const [round, setRound] = useState(0);
   const [pickedIndices, setPickedIndices] = useState<number[]>([]);
@@ -1331,7 +1287,11 @@ function SubGameSpelling({ words, onFinish }: { words: Word[]; onFinish: () => v
   };
 
   const handleCheckSpelling = () => {
-    const currentWord = pickedIndices.map((i) => scramble[i].char).join('');
+    // Proteção de leitura do índice
+    const currentWord = pickedIndices
+      .map((i) => scramble[i]?.char || '')
+      .join('');
+
     if (currentWord === targetClean) {
       setFeedback('success');
       playSuccessSound();
@@ -1371,11 +1331,10 @@ function SubGameSpelling({ words, onFinish }: { words: Word[]; onFinish: () => v
         </p>
       </div>
 
-      {/* Espaços das Letras Digitadas (Quadrados Perfeitos) */}
       <div className="flex justify-center gap-2 sm:gap-2.5 my-6 flex-wrap">
         {Array.from({ length: targetClean.length }).map((_, i) => {
           const letterIdx = pickedIndices[i];
-          const char = letterIdx !== undefined ? scramble[letterIdx].char : '';
+          const char = (letterIdx !== undefined && scramble[letterIdx]) ? scramble[letterIdx]?.char : '';
 
           return (
             <div
@@ -1397,13 +1356,12 @@ function SubGameSpelling({ words, onFinish }: { words: Word[]; onFinish: () => v
         })}
       </div>
 
-      {/* Teclado das Letras (Quadrados Perfeitos Uniformes) */}
       <div className="flex justify-center gap-2 sm:gap-2.5 flex-wrap mb-6">
         {scramble.map((item, idx) => {
           const isUsed = pickedIndices.includes(idx);
           return (
             <button
-              key={item.id}
+              key={item?.id ?? idx}
               onClick={() => handlePickLetter(idx)}
               disabled={isUsed || feedback === 'success'}
               className={`w-12 h-12 sm:w-14 sm:h-14 rounded-2xl font-black text-lg sm:text-xl border-2 transition-all duration-150 ${
@@ -1412,13 +1370,12 @@ function SubGameSpelling({ words, onFinish }: { words: Word[]; onFinish: () => v
                   : 'border-amber-300 bg-white text-amber-900 shadow-sm hover:border-amber-500 hover:scale-105 active:scale-95 cursor-pointer'
               }`}
             >
-              {item.char}
+              {item?.char || ''}
             </button>
           );
         })}
       </div>
 
-      {/* Ações */}
       <div className="flex items-center justify-center gap-3">
         <button
           type="button"
@@ -1464,7 +1421,7 @@ function SubGameBalloon({ words, onFinish }: { words: Word[]; onFinish: () => vo
       lastSpokenRound.current = round;
       speakWord(target.word_en);
     }
-  }, [round]);
+  }, [round, target, words]);
 
   const handlePop = (item: Word) => {
     if (poppedId) return;
@@ -1530,6 +1487,7 @@ function SubGameBalloon({ words, onFinish }: { words: Word[]; onFinish: () => vo
     </div>
   );
 }
+
 function Step4RealChallenge({ words, onShowPin }: { words: Word[]; onShowPin: () => void }) {
   const challengeWords = words.slice(0, 3);
   return (
