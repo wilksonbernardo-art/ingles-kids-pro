@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { X, Lock, Sparkles, Trophy, Award } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { playSuccessSound } from '@/lib/speech';
+import confetti from 'canvas-confetti';
 
 interface Badge {
   id: string;
@@ -20,7 +22,6 @@ interface BadgesModalProps {
   onClose: () => void;
 }
 
-// Estilos visuais dinâmicos para cada raridade quando desbloqueada
 const RARITY_THEMES = {
   common: {
     name: 'Comum',
@@ -55,25 +56,95 @@ export default function BadgesModal({ profileId, profileName, isOpen, onClose }:
   const [filterRarity, setFilterRarity] = useState<string>('all');
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || !profileId) return;
 
     (async () => {
       setLoading(true);
-      // 1. Buscar todas as medalhas cadastradas
-      const { data: allBadges } = await supabase
-        .from('badges')
-        .select('*')
-        .order('requirement_value', { ascending: true });
 
-      // 2. Buscar medalhas conquistadas por este perfil
-      const { data: userBadges } = await supabase
-        .from('user_badges')
-        .select('badge_id')
-        .eq('profile_id', profileId);
+      try {
+        // 1. Buscar todas as medalhas cadastradas no sistema
+        const { data: allBadges } = await supabase
+          .from('badges')
+          .select('*')
+          .order('requirement_value', { ascending: true });
 
-      if (allBadges) setBadges(allBadges as Badge[]);
-      if (userBadges) setUnlockedBadgeIds(userBadges.map((b: any) => b.badge_id));
-      setLoading(false);
+        // 2. Buscar medalhas já conquistadas por este perfil
+        const { data: userBadges } = await supabase
+          .from('user_badges')
+          .select('badge_id')
+          .eq('profile_id', profileId);
+
+        const currentUnlockedIds = new Set((userBadges || []).map((b: any) => b.badge_id));
+
+        // 3. Buscar o progresso atual do perfil para avaliar se tem direito a novas medalhas
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('stars, streak_days')
+          .eq('id', profileId)
+          .maybeSingle();
+
+        const { count: completedLessonsCount } = await supabase
+          .from('lesson_progress')
+          .select('*', { count: 'exact', head: true })
+          .eq('profile_id', profileId)
+          .eq('status', 'completed');
+
+        const stars = profile?.stars || 0;
+        const streak = profile?.streak_days || 0;
+        const lessons = completedLessonsCount || 0;
+
+        // 4. Checar cada medalha que ainda não foi desbloqueada
+        const newBadgesToAward: string[] = [];
+
+        if (allBadges) {
+          for (const badge of allBadges) {
+            if (currentUnlockedIds.has(badge.id)) continue;
+
+            let earned = false;
+            const reqType = badge.requirement_type?.toLowerCase();
+            const reqVal = Number(badge.requirement_value) || 0;
+
+            if (reqType === 'lessons' || reqType === 'lesson') {
+              if (lessons >= reqVal) earned = true;
+            } else if (reqType === 'stars' || reqType === 'star') {
+              if (stars >= reqVal) earned = true;
+            } else if (reqType === 'streak' || reqType === 'days') {
+              if (streak >= reqVal) earned = true;
+            }
+
+            if (earned) {
+              newBadgesToAward.push(badge.id);
+            }
+          }
+        }
+
+        // 5. Se houver medalhas merecidas, salvar no banco agora!
+        if (newBadgesToAward.length > 0) {
+          const rowsToInsert = newBadgesToAward.map((badge_id) => ({
+            profile_id: profileId,
+            badge_id,
+          }));
+
+          const { error: insertError } = await supabase.from('user_badges').insert(rowsToInsert);
+
+          if (!insertError) {
+            newBadgesToAward.forEach((id) => currentUnlockedIds.add(id));
+            try {
+              playSuccessSound();
+              confetti({ particleCount: 70, spread: 60, origin: { y: 0.6 } });
+            } catch (e) {}
+          } else {
+            console.warn('Erro ao registrar user_badges:', insertError);
+          }
+        }
+
+        if (allBadges) setBadges(allBadges as Badge[]);
+        setUnlockedBadgeIds(Array.from(currentUnlockedIds));
+      } catch (err) {
+        console.error('Erro ao carregar ou conceder medalhas:', err);
+      } finally {
+        setLoading(false);
+      }
     })();
   }, [isOpen, profileId]);
 
@@ -153,11 +224,11 @@ export default function BadgesModal({ profileId, profileName, isOpen, onClose }:
           </div>
         </div>
 
-        {/* Grelha de Medalhas (Coloridas vs Preto e Branco) */}
+        {/* Grelha de Medalhas (Coloridas vs Bloqueadas) */}
         <div className="p-6 overflow-y-auto flex-1 grid grid-cols-2 sm:grid-cols-3 gap-4">
           {filteredBadges.map((badge) => {
             const isUnlocked = unlockedBadgeIds.includes(badge.id);
-            const theme = RARITY_THEMES[badge.rarity];
+            const theme = RARITY_THEMES[badge.rarity] || RARITY_THEMES.common;
 
             return (
               <div
