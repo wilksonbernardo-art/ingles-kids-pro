@@ -6,6 +6,25 @@ import { speakWord, playSuccessSound } from '@/lib/speech';
 import { celebrate } from '@/lib/confetti';
 import WordVisual from '@/components/WordVisual';
 
+// Função de conversão da pronúncia para grafia intuitiva
+function formatFriendlyPhonetic(phonetic?: string | null): string {
+  if (!phonetic) return '';
+
+  return phonetic
+    .replace(/θ/g, 'f')
+    .replace(/ð/g, 'd')
+    .replace(/ʃ/g, 'ch')
+    .replace(/ʒ/g, 'j')
+    .replace(/tʃ/g, 'tch')
+    .replace(/dʒ/g, 'dj')
+    .replace(/ŋ/g, 'ng')
+    .replace(/æ/g, 'é')
+    .replace(/ʌ/g, 'ã')
+    .replace(/ə/g, 'e')
+    .replace(/ɪ/g, 'i')
+    .replace(/ʊ/g, 'u');
+}
+
 type LessonRunnerProps = {
   module: Module;
   lessonDay: number;
