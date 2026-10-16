@@ -1160,7 +1160,7 @@ function Step4RealChallenge({ words, onShowPin }: { words: Word[]; onShowPin: ()
   );
 }
 
-/* ==================== CAÇA-PALAVRAS INTERATIVO TRADICIONAL ==================== */
+/* ==================== CAÇA-PALAVRAS INTERATIVO CORRIGIDO ==================== */
 function WordSearchBoard({
   targetWord,
   onWordFound,
@@ -1168,43 +1168,46 @@ function WordSearchBoard({
   targetWord: string;
   onWordFound: () => void;
 }) {
-  const cleanTarget = targetWord.toUpperCase().replace(/[^A-Z]/g, '');
+  // 1. Limpa espaços e caracteres especiais (ex: "SMELL GOOD" -> "SMELLGOOD")
+  const cleanTarget = (targetWord || '').toUpperCase().replace(/[^A-Z]/g, '');
   const [selectedCoords, setSelectedCoords] = useState<{ r: number; c: number }[]>([]);
   const [gridData, setGridData] = useState<{
     grid: string[][];
-    targetPositions: { r: number; c: number }[];
-  }>({ grid: [], targetPositions: [] });
+    size: number;
+  }>({ grid: [], size: 6 });
 
-  // Gera o grid 6x6 e posiciona a palavra alvo (horizontal ou vertical)
   useEffect(() => {
-    const size = 6;
+    if (!cleanTarget) return;
+
+    const len = cleanTarget.length;
+    // O tamanho da grade precisa ser no mínimo o tamanho da palavra + 1 (mínimo 6)
+    const size = Math.max(6, len + 1);
+
+    // Inicializa grade com letras aleatórias
     const g: string[][] = Array.from({ length: size }, () =>
       Array.from({ length: size }, () =>
         String.fromCharCode(65 + Math.floor(Math.random() * 26))
       )
     );
 
+    // Sorteia direção: true = horizontal, false = vertical
     const isHorizontal = Math.random() > 0.5;
-    const len = cleanTarget.length;
-    let targetPositions: { r: number; c: number }[] = [];
 
     if (isHorizontal) {
       const r = Math.floor(Math.random() * size);
       const startC = Math.floor(Math.random() * (size - len + 1));
       for (let i = 0; i < len; i++) {
         g[r][startC + i] = cleanTarget[i];
-        targetPositions.push({ r, c: startC + i });
       }
     } else {
       const c = Math.floor(Math.random() * size);
       const startR = Math.floor(Math.random() * (size - len + 1));
       for (let i = 0; i < len; i++) {
         g[startR + i][c] = cleanTarget[i];
-        targetPositions.push({ r: startR + i, c });
       }
     }
 
-    setGridData({ grid: g, targetPositions });
+    setGridData({ grid: g, size });
     setSelectedCoords([]);
   }, [cleanTarget]);
 
@@ -1220,9 +1223,9 @@ function WordSearchBoard({
 
     setSelectedCoords(nextCoords);
 
-    // Checa se as coordenadas clicadas formam a palavra alvo
+    // Checa se o conjunto de letras clicadas formou a palavra certa
     const currentLetters = nextCoords
-      .map((pos) => gridData.grid[pos.r][pos.c])
+      .map((pos) => gridData.grid[pos.r]?.[pos.c] || '')
       .join('');
 
     if (currentLetters === cleanTarget) {
@@ -1239,9 +1242,14 @@ function WordSearchBoard({
     .join('');
 
   return (
-    <div className="flex flex-col items-center">
-      {/* Grade de Letras 6x6 */}
-      <div className="grid grid-cols-6 gap-2 sm:gap-2.5 p-3 bg-indigo-50/70 border-2 border-indigo-200 rounded-3xl max-w-sm mx-auto shadow-xs">
+    <div className="flex flex-col items-center w-full">
+      {/* Grade com colunas flexíveis de acordo com o tamanho da palavra */}
+      <div 
+        className="grid gap-1.5 sm:gap-2 p-3 bg-indigo-50/70 border-2 border-indigo-200 rounded-3xl max-w-full mx-auto shadow-xs"
+        style={{
+          gridTemplateColumns: `repeat(${gridData.size}, minmax(0, 1fr))`,
+        }}
+      >
         {gridData.grid.map((row, r) =>
           row.map((char, c) => {
             const isSelected = selectedCoords.some((pos) => pos.r === r && pos.c === c);
@@ -1249,8 +1257,9 @@ function WordSearchBoard({
             return (
               <button
                 key={`${r}-${c}`}
+                type="button"
                 onClick={() => handleCellClick(r, c)}
-                className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl font-black text-lg sm:text-xl transition-all flex items-center justify-center cursor-pointer select-none active:scale-95 ${
+                className={`w-8 h-8 sm:w-10 sm:h-10 md:w-11 md:h-11 rounded-xl font-black text-sm sm:text-base md:text-lg transition-all flex items-center justify-center cursor-pointer select-none active:scale-95 ${
                   isSelected
                     ? 'bg-indigo-600 text-white shadow-md scale-105 border-2 border-indigo-700'
                     : 'bg-white text-slate-700 border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/50'
@@ -1266,9 +1275,10 @@ function WordSearchBoard({
       {/* Leitor de Letras Formadas */}
       <div className="flex items-center gap-3 mt-4">
         <div className="px-4 py-2 bg-slate-100 rounded-xl border border-slate-200 text-slate-700 font-extrabold text-sm min-w-[140px] text-center">
-          Letras: <span className="text-indigo-600">{currentConstructedWord || '...'}</span>
+          Letras: <span className="text-indigo-600 font-black">{currentConstructedWord || '...'}</span>
         </div>
         <button
+          type="button"
           onClick={handleResetLetters}
           className="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl font-bold text-xs cursor-pointer active:scale-95"
         >
