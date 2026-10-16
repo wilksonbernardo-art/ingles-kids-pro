@@ -5,7 +5,6 @@ import { supabase, LESSON_STEPS } from '@/lib/supabase';
 import { speakWord, playSuccessSound } from '@/lib/speech';
 import { celebrate } from '@/lib/confetti';
 import WordVisual from '@/components/WordVisual';
-import { checkAndAwardBadges } from '@/lib/badges';
 
 // Função auxiliar para fonética amigável
 function formatFriendlyPhonetic(phonetic?: string | null): string {
@@ -241,7 +240,6 @@ export default function LessonRunner({
       onStarsUpdated();
     } catch (e) {}
 
-    await checkAndAwardBadges(profileId);
     celebrate();
     setLessonComplete(true);
   }
