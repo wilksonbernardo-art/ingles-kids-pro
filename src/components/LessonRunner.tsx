@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { ArrowLeft, Volume2, Check, Lock, Star, Pencil, ChevronRight } from 'lucide-react';
 import type { Module, Word, LessonProgress } from '@/lib/supabase';
 import { supabase, LESSON_STEPS } from '@/lib/supabase';
-import { speakWord, playSuccessSound } from '@/lib/speech';
+import { speakWord, playSuccessSound, playErrorSound } from '@/lib/speech';
 import { celebrate } from '@/lib/confetti';
 import WordVisual from '@/components/WordVisual';
 
@@ -53,7 +53,7 @@ export default function LessonRunner({
 }: LessonRunnerProps) {
   const isExam = lessonDay === 6;
   const [words, setWords] = useState<Word[]>([]);
-  const [moduleAllWords, setModuleAllWords] = useState<Word[]>([]); // Pool de palavras reserva para preencher opções erradas
+  const [moduleAllWords, setModuleAllWords] = useState<Word[]>([]);
   const [currentStep, setCurrentStep] = useState(existingProgress?.current_step || 1);
   const [timeLeft, setTimeLeft] = useState(STEP_DURATION);
   const [stepDone, setStepDone] = useState<Set<number>>(new Set());
@@ -68,7 +68,6 @@ export default function LessonRunner({
     (async () => {
       setLoading(true);
 
-      // Sempre busca todas as palavras do módulo para usar como alternativas incorretas nos jogos
       const { data: allModWords } = await supabase
         .from('words')
         .select('*')
@@ -105,7 +104,6 @@ export default function LessonRunner({
         if (!error && data && data.length > 0) {
           setWords(data as Word[]);
         } else if (allModWords && allModWords.length > 0) {
-          // Fallback seguro: se a aula específica tiver poucas palavras, pega do módulo
           setWords(allModWords.slice(0, 5) as Word[]);
         }
       }
@@ -430,7 +428,7 @@ export default function LessonRunner({
   );
 }
 
-/* ==================== PASSO 3: CIRCUITO DE 4 MINIJOGOS (CORRIGIDO) ==================== */
+/* ==================== PASSO 3: CIRCUITO DE 4 MINIJOGOS ==================== */
 function Step3MiniGames({ 
   words, 
   poolWords, 
@@ -446,12 +444,10 @@ function Step3MiniGames({
   const [game3Done, setGame3Done] = useState(false);
   const [game4Done, setGame4Done] = useState(false);
 
-  // 1. Embaralha as palavras da lição de forma estável
   const randomizedLessonWords = useMemo(() => {
     return [...words].sort(() => Math.random() - 0.5);
   }, [words]);
 
-  // 2. Lista estável específica para o jogo da memória (não muda a cada clique)
   const memoryWords = useMemo(() => {
     if (randomizedLessonWords.length >= 4) {
       return randomizedLessonWords.slice(0, 6);
@@ -558,7 +554,7 @@ function Step3MiniGames({
   );
 }
 
-/* ==================== SUB-JOGO 1: ESCUTA E ENCONTRA (SEM LOOP) ==================== */
+/* ==================== SUB-JOGO 1: ESCUTA E ENCONTRA ==================== */
 function SubGameListening({ 
   words, 
   poolWords, 
@@ -577,13 +573,11 @@ function SubGameListening({
   const target = words[round];
 
   useEffect(() => {
-    // Se não há target ou já passou do fim da lista, encerra a fase imediatamente
     if (!target) {
       onFinish();
       return;
     }
 
-    // Busca opções erradas de todo o pool de palavras do módulo
     const wrong = poolWords
       .filter((w) => w.id !== target.id)
       .sort(() => Math.random() - 0.5)
@@ -663,11 +657,10 @@ function SubGameListening({
   );
 }
 
-/* ==================== SUB-JOGO 2: SUPER MEMÓRIA (BARALHO FIXO) ==================== */
+/* ==================== SUB-JOGO 2: SUPER MEMÓRIA ==================== */
 function SubGameMemory({ words, onFinish }: { words: Word[]; onFinish: () => void }) {
   type Card = { uid: string; word: Word; flipped: boolean; matched: boolean };
 
-  // Inicializa o baralho UMA ÚNICA VEZ na montagem usando useState com função (lazy initialization)
   const [cards, setCards] = useState<Card[]>(() => {
     const deck: Card[] = [];
     words.forEach((w) => {
@@ -680,7 +673,6 @@ function SubGameMemory({ words, onFinish }: { words: Word[]; onFinish: () => voi
   const isCheckingRef = useRef(false);
 
   const handleCardClick = (card: Card) => {
-    // Se a carta já estiver virada, combinada ou se estiver no meio da checagem de par, ignora o clique
     if (card.flipped || card.matched || isCheckingRef.current) return;
 
     const flippedCards = cards.filter((c) => c.flipped && !c.matched);
@@ -688,17 +680,14 @@ function SubGameMemory({ words, onFinish }: { words: Word[]; onFinish: () => voi
 
     speakWord(card.word.word_en);
 
-    // Vira a carta clicada
     const updatedCards = cards.map((c) => (c.uid === card.uid ? { ...c, flipped: true } : c));
     setCards(updatedCards);
 
-    // Se agora temos 2 cartas viradas para checar
     if (flippedCards.length === 1) {
       const firstCard = flippedCards[0];
       isCheckingRef.current = true;
 
       if (firstCard.word.id === card.word.id) {
-        // Acertou o par!
         playSuccessSound();
         setTimeout(() => {
           setCards((prev) => {
@@ -713,7 +702,6 @@ function SubGameMemory({ words, onFinish }: { words: Word[]; onFinish: () => voi
           isCheckingRef.current = false;
         }, 500);
       } else {
-        // Errou o par: desvira após 900ms
         setTimeout(() => {
           setCards((prev) =>
             prev.map((c) => (c.matched ? c : { ...c, flipped: false }))
@@ -820,6 +808,7 @@ function SubGameSpelling({ words, onFinish }: { words: Word[]; onFinish: () => v
       }, 1000);
     } else {
       setFeedback('error');
+      playErrorSound();
       setTimeout(() => {
         setPickedIndices([]);
         setFeedback('idle');
@@ -921,7 +910,7 @@ function SubGameSpelling({ words, onFinish }: { words: Word[]; onFinish: () => v
   );
 }
 
-/* ==================== SUB-JOGO 4: BALÃO MÁGICO (SEM LOOP) ==================== */
+/* ==================== SUB-JOGO 4: BALÃO MÁGICO ==================== */
 function SubGameBalloon({ 
   words, 
   poolWords, 
@@ -943,7 +932,6 @@ function SubGameBalloon({
       onFinish();
       return;
     }
-    // Usa o pool do módulo para sempre ter 2 alternativas erradas
     const wrong = poolWords
       .filter((w) => w.id !== target.id)
       .sort(() => Math.random() - 0.5)
@@ -972,6 +960,7 @@ function SubGameBalloon({
         }
       }, 700);
     } else {
+      playErrorSound();
       setTimeout(() => setPoppedId(null), 600);
     }
   };
@@ -1122,14 +1111,15 @@ function Step4RealChallenge({ words, onShowPin }: { words: Word[]; onShowPin: ()
   );
 }
 
-/* ==================== PROVA AVALIATIVA ==================== */
-type ExamPhase = 'listening' | 'spelling' | 'sound_match';
+/* ==================== PROVA AVALIATIVA REFORMULADA (5 FASES • NOTA 0 A 10) ==================== */
+type ExamPhase = 'listening' | 'context' | 'spelling' | 'word_find' | 'match';
 
 interface ExamQuestion {
   id: number;
   phase: ExamPhase;
   target: Word;
-  options?: Word[];
+  options?: string[];
+  contextSentence?: string;
   scrambledLetters?: { id: number; char: string }[];
 }
 
@@ -1161,85 +1151,111 @@ function WeeklyExamRunner({
   const [examFinished, setExamFinished] = useState(false);
 
   useEffect(() => {
-    if (!words || words.length < 3) return;
+    (async () => {
+      if (!words || words.length === 0) return;
 
-    const shuffled = [...words].sort(() => Math.random() - 0.5);
+      let wordPool = [...words];
 
-    const eligibleForSpelling = shuffled.filter(
-      (w) => w.word_en && w.word_en.trim().replace(/[^A-Za-z]/g, '').length >= 3
-    );
+      // Se o módulo atual tiver menos de 25 palavras, busca reforço dos módulos anteriores
+      if (wordPool.length < 25) {
+        const { data: pastWords } = await supabase
+          .from('words')
+          .select('*')
+          .order('id', { ascending: false })
+          .limit(50);
 
-    let spellingWords: Word[] = [];
-    if (eligibleForSpelling.length >= 2) {
-      spellingWords = eligibleForSpelling.slice(0, 3);
-    }
-
-    const remainingWords = shuffled.filter((w) => !spellingWords.some((sw) => sw.id === w.id));
-
-    const listeningCount = Math.min(4, Math.max(1, Math.floor(remainingWords.length / 2)));
-    const listeningWords = remainingWords.slice(0, listeningCount);
-    const soundMatchWords = remainingWords.slice(listeningCount);
-
-    const generated: ExamQuestion[] = [];
-    let qId = 1;
-
-    listeningWords.forEach((target) => {
-      const wrong = words.filter((w) => w.id !== target.id).sort(() => Math.random() - 0.5).slice(0, 3);
-      generated.push({
-        id: qId++,
-        phase: 'listening',
-        target,
-        options: [target, ...wrong].sort(() => Math.random() - 0.5),
-      });
-    });
-
-    spellingWords.forEach((target) => {
-      const letters = target.word_en.toUpperCase().replace(/[^A-Z]/g, '').split('');
-      const scrambled = letters
-        .map((char, index) => ({ id: index, char }))
-        .sort(() => Math.random() - 0.5);
-
-      generated.push({
-        id: qId++,
-        phase: 'spelling',
-        target,
-        scrambledLetters: scrambled,
-      });
-    });
-
-    soundMatchWords.forEach((target) => {
-      const targetVisual = target.image_url || target.emoji || target.word_en.toLowerCase();
-      const seenVisuals = new Set<string>([targetVisual]);
-      const validWrong: Word[] = [];
-
-      const poolShuffled = words.filter((w) => w.id !== target.id).sort(() => Math.random() - 0.5);
-
-      for (const candidate of poolShuffled) {
-        const candidateVisual = candidate.image_url || candidate.emoji || candidate.word_en.toLowerCase();
-        if (!seenVisuals.has(candidateVisual)) {
-          seenVisuals.add(candidateVisual);
-          validWrong.push(candidate);
+        if (pastWords && pastWords.length > 0) {
+          const uniquePast = (pastWords as Word[]).filter(
+            (pw) => !wordPool.some((w) => w.word_en.toLowerCase() === pw.word_en.toLowerCase())
+          );
+          const needed = 25 - wordPool.length;
+          wordPool = [...wordPool, ...uniquePast.slice(0, needed)];
         }
-        if (validWrong.length === 3) break;
       }
 
-      generated.push({
-        id: qId++,
-        phase: 'sound_match',
-        target,
-        options: [target, ...validWrong].sort(() => Math.random() - 0.5),
-      });
-    });
+      const shuffled = [...wordPool].sort(() => Math.random() - 0.5);
+      const examWords = shuffled.slice(0, Math.min(25, shuffled.length));
 
-    setQuestions(generated);
+      const generated: ExamQuestion[] = [];
+      let qId = 1;
+
+      examWords.forEach((target, index) => {
+        const phaseIndex = index % 5;
+        const otherWords = examWords.filter((w) => w.id !== target.id);
+
+        if (phaseIndex === 0) {
+          // 1. Escuta pura (Áudio -> Texto em inglês)
+          const wrong = otherWords
+            .sort(() => Math.random() - 0.5)
+            .slice(0, 2)
+            .map((w) => w.word_en);
+          generated.push({
+            id: qId++,
+            phase: 'listening',
+            target,
+            options: [target.word_en, ...wrong].sort(() => Math.random() - 0.5),
+          });
+        } else if (phaseIndex === 1) {
+          // 2. Frase em contexto
+          const wrong = otherWords
+            .sort(() => Math.random() - 0.5)
+            .slice(0, 2)
+            .map((w) => w.word_en);
+          generated.push({
+            id: qId++,
+            phase: 'context',
+            target,
+            options: [target.word_en, ...wrong].sort(() => Math.random() - 0.5),
+          });
+        } else if (phaseIndex === 2) {
+          // 3. Montar a Palavra (Scramble de letrinhas)
+          const cleanLetters = target.word_en.toUpperCase().replace(/[^A-Z]/g, '').split('');
+          const scrambled = cleanLetters
+            .map((char, i) => ({ id: i, char }))
+            .sort(() => Math.random() - 0.5);
+          generated.push({
+            id: qId++,
+            phase: 'spelling',
+            target,
+            scrambledLetters: scrambled,
+          });
+        } else if (phaseIndex === 3) {
+          // 4. Tradução para o inglês (Português -> Inglês)
+          const wrong = otherWords
+            .sort(() => Math.random() - 0.5)
+            .slice(0, 2)
+            .map((w) => w.word_en);
+          generated.push({
+            id: qId++,
+            phase: 'word_find',
+            target,
+            options: [target.word_en, ...wrong].sort(() => Math.random() - 0.5),
+          });
+        } else {
+          // 5. O que significa em português (Inglês com áudio -> Português)
+          const wrong = otherWords
+            .sort(() => Math.random() - 0.5)
+            .slice(0, 2)
+            .map((w) => w.word_pt);
+          generated.push({
+            id: qId++,
+            phase: 'match',
+            target,
+            options: [target.word_pt, ...wrong].sort(() => Math.random() - 0.5),
+          });
+        }
+      });
+
+      setQuestions(generated);
+    })();
   }, [words]);
 
   const q = questions[currentIdx];
   const totalQuestions = questions.length;
 
   useEffect(() => {
-    if (q && (q.phase === 'listening' || q.phase === 'sound_match')) {
-      setTimeout(() => speakWord(q.target.word_en), 300);
+    if (q) {
+      setTimeout(() => speakWord(q.target.word_en), 250);
     }
     setSelectedLetterIndices([]);
     setAnswered(false);
@@ -1249,7 +1265,7 @@ function WeeklyExamRunner({
   if (!q) {
     return (
       <div className="text-center py-20">
-        <p className="text-slate-400 font-bold">A preparar os desafios da prova...</p>
+        <p className="text-slate-400 font-bold">Preparando os desafios da avaliação...</p>
       </div>
     );
   }
@@ -1259,6 +1275,8 @@ function WeeklyExamRunner({
     if (isCorrect) {
       setScore((s) => s + 1);
       playSuccessSound();
+    } else {
+      playErrorSound();
     }
 
     setExamRecords((prev) => [
@@ -1277,18 +1295,14 @@ function WeeklyExamRunner({
       } else {
         setExamFinished(true);
       }
-    }, 1200);
+    }, 1100);
   };
 
-  const handleSelectOption = (chosenWord: Word) => {
+  const handleSelectOption = (chosenText: string, correctText: string) => {
     if (answered) return;
-    setSelectedOpt(chosenWord.id);
-    const isCorrect = chosenWord.id === q.target.id;
-    advanceWithRecord(
-      isCorrect,
-      chosenWord.word_pt || chosenWord.word_en,
-      q.target.word_pt || q.target.word_en
-    );
+    setSelectedOpt(chosenText);
+    const isCorrect = chosenText.trim().toLowerCase() === correctText.trim().toLowerCase();
+    advanceWithRecord(isCorrect, chosenText, correctText);
   };
 
   const handlePickLetter = (scrambleIdx: number) => {
@@ -1304,7 +1318,6 @@ function WeeklyExamRunner({
   const handleConfirmSpelling = () => {
     if (answered) return;
     const targetClean = (q.target.word_en || '').toUpperCase().replace(/[^A-Z]/g, '');
-
     const currentSpelled = selectedLetterIndices
       .map((idx) => q.scrambledLetters?.[idx]?.char || '')
       .join('');
@@ -1314,36 +1327,38 @@ function WeeklyExamRunner({
   };
 
   if (examFinished) {
-    const finalStars = score * 5;
-    const percentage = totalQuestions > 0 ? Math.round((score / totalQuestions) * 100) : 100;
-    const passed = percentage >= 60;
+    const finalScore10 = totalQuestions > 0 ? Number(((score / totalQuestions) * 10).toFixed(1)) : 10.0;
+    const earnedStars = score * 2;
+    const passed = finalScore10 >= 6.0;
 
     return (
       <div className="max-w-2xl mx-auto px-4 py-8">
         <div className="bg-white rounded-3xl shadow-xl p-8 border-2 border-slate-100 text-center mb-6">
-          <div className="text-7xl mb-3">{passed ? '🎖️' : '📚'}</div>
+          <div className="text-7xl mb-3">{passed ? '🏆' : '📖'}</div>
           <h2 className="text-2xl font-black text-slate-800 mb-1">
-            {passed ? 'Desafio Semanal Superado!' : 'Prova Finalizada!'}
+            {passed ? 'Excelente Desempenho!' : 'Avaliação Concluída!'}
           </h2>
           <p className="text-slate-500 font-semibold mb-6">Módulo: {moduleTitle}</p>
 
           <div className="grid grid-cols-2 gap-4 mb-6">
-            <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl">
-              <span className="text-xs font-bold text-slate-400 uppercase">Pontuação Final</span>
-              <p className="text-3xl font-black text-slate-800">{score} / {totalQuestions}</p>
+            <div className="bg-indigo-50 border border-indigo-200 p-5 rounded-2xl">
+              <span className="text-xs font-bold text-indigo-700 uppercase tracking-wider">Sua Nota</span>
+              <p className="text-4xl font-black text-indigo-900 mt-1">
+                {finalScore10} <span className="text-xl text-indigo-400 font-bold">/ 10.0</span>
+              </p>
             </div>
-            <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl">
-              <span className="text-xs font-bold text-amber-700 uppercase">Estrelas Ganhas</span>
-              <p className="text-3xl font-black text-amber-600">+{finalStars} ⭐</p>
+            <div className="bg-amber-50 border border-amber-200 p-5 rounded-2xl">
+              <span className="text-xs font-bold text-amber-700 uppercase tracking-wider">Estrelas Ganhas</span>
+              <p className="text-4xl font-black text-amber-600 mt-1">+{earnedStars} ⭐</p>
             </div>
           </div>
 
           <p className="text-sm font-bold text-slate-600 mb-6">
-            Aproveitamento: <span className={passed ? 'text-emerald-600 font-black' : 'text-rose-500 font-black'}>{percentage}%</span>
+            Você acertou <strong className="text-emerald-600">{score}</strong> de <strong>{totalQuestions}</strong> questões.
           </p>
 
           <button
-            onClick={() => onFinishExam(score, finalStars)}
+            onClick={() => onFinishExam(score, earnedStars)}
             className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-2xl shadow-lg cursor-pointer text-base transition-all hover:scale-105 active:scale-95"
           >
             Gravar Resultado & Concluir Módulo
@@ -1352,9 +1367,9 @@ function WeeklyExamRunner({
 
         <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-6">
           <h3 className="font-extrabold text-slate-800 text-lg mb-1 flex items-center gap-2">
-            📋 Gabarito & Correção das Questões
+            📋 Gabarito da Avaliação
           </h3>
-          <p className="text-xs text-slate-400 mb-4">Revisão detalhada de cada pergunta:</p>
+          <p className="text-xs text-slate-400 mb-4">Veja como foi sua resposta em cada item:</p>
 
           <div className="space-y-3">
             {examRecords.map((item, idx) => (
@@ -1364,40 +1379,36 @@ function WeeklyExamRunner({
                   item.isCorrect ? 'bg-emerald-50/50 border-emerald-200' : 'bg-rose-50/50 border-rose-200'
                 }`}
               >
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-10 h-10 flex items-center justify-center shrink-0">
-                    <WordVisual word={item.question.target} size="sm" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="font-extrabold text-slate-800 text-sm flex items-center gap-2">
-                      <span>{item.question.target.word_en}</span>
-                      <button
-                        onClick={() => speakWord(item.question.target.word_en)}
-                        className="text-indigo-600 hover:text-indigo-800 cursor-pointer"
-                        title="Ouvir som"
-                      >
-                        <Volume2 className="w-3.5 h-3.5" />
-                      </button>
+                <div className="min-w-0">
+                  <p className="font-extrabold text-slate-800 text-sm flex items-center gap-2">
+                    <span>{item.question.target.word_en}</span>
+                    <button
+                      onClick={() => speakWord(item.question.target.word_en)}
+                      className="text-indigo-600 hover:text-indigo-800 cursor-pointer"
+                      title="Ouvir som"
+                    >
+                      <Volume2 className="w-3.5 h-3.5" />
+                    </button>
+                    <span className="text-xs text-slate-400 font-normal">({item.question.target.word_pt})</span>
+                  </p>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Sua resposta: <strong className={item.isCorrect ? 'text-emerald-700' : 'text-rose-600 line-through'}>{item.userAnswerText}</strong>
+                  </p>
+                  {!item.isCorrect && (
+                    <p className="text-xs text-emerald-700 font-bold mt-0.5">
+                      Resposta certa: {item.correctAnswerText}
                     </p>
-                    <p className="text-xs text-slate-500">
-                      Sua resposta: <strong className={item.isCorrect ? 'text-emerald-700' : 'text-rose-600 line-through'}>{item.userAnswerText}</strong>
-                    </p>
-                    {!item.isCorrect && (
-                      <p className="text-xs text-emerald-700 font-bold mt-0.5">
-                        Resposta certa: {item.correctAnswerText}
-                      </p>
-                    )}
-                  </div>
+                  )}
                 </div>
 
                 <div className="shrink-0">
                   {item.isCorrect ? (
                     <span className="text-xs font-black bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full">
-                      Correto +1
+                      Correto ✔
                     </span>
                   ) : (
                     <span className="text-xs font-black bg-rose-100 text-rose-800 px-3 py-1 rounded-full">
-                      Errou +0
+                      Errou ✘
                     </span>
                   )}
                 </div>
@@ -1421,56 +1432,56 @@ function WeeklyExamRunner({
         </button>
         <div className="flex items-center gap-2">
           <span className="bg-indigo-100 text-indigo-800 font-black text-xs px-3 py-1 rounded-full uppercase">
-            {q.phase === 'listening' 
-              ? '🎧 Fase 1: Listening' 
-              : q.phase === 'spelling' 
-              ? '🔤 Fase 2: Montar Palavra' 
-              : '👀 Fase 3: Ouve e Encontra'}
+            {q.phase === 'listening' && '🎧 1. Ouvir & Identificar'}
+            {q.phase === 'context' && '📝 2. Complete a Frase'}
+            {q.phase === 'spelling' && '🔤 3. Monte as Letras'}
+            {q.phase === 'word_find' && '🔍 4. Qual é em Inglês?'}
+            {q.phase === 'match' && '🔄 5. O que Significa?'}
           </span>
           <span className="text-xs text-slate-400 font-bold">
             {currentIdx + 1} de {totalQuestions}
           </span>
         </div>
         <div className="font-extrabold text-sm text-slate-600">
-          Nota: <strong className="text-emerald-600">{score}</strong>
+          Acertos: <strong className="text-emerald-600">{score}</strong>
         </div>
       </div>
 
       <div className="bg-white rounded-3xl shadow-md border-2 border-slate-100 p-8 text-center min-h-[420px] flex flex-col justify-between">
+        {/* FASE 1: LISTENING (SOM -> ESCRITA EM INGLÊS) */}
         {q.phase === 'listening' && (
           <>
             <div>
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Ouve o áudio com atenção!</p>
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Ouve com atenção:</p>
               <button
                 onClick={() => speakWord(q.target.word_en)}
                 className="w-24 h-24 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full flex items-center justify-center shadow-xl mx-auto my-6 active:scale-95 transition-all cursor-pointer"
               >
                 <Volume2 className="w-12 h-12" />
               </button>
-              <p className="text-slate-500 text-sm font-semibold">Qual palavra foi dita?</p>
+              <p className="text-slate-600 text-base font-bold">Qual palavra em inglês você ouviu?</p>
             </div>
 
-            <div className="grid grid-cols-2 gap-3.5 mt-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 mt-4">
               {q.options?.map((opt) => {
-                const isCorrect = opt.id === q.target.id;
-                const isSelected = selectedOpt === opt.id;
-                let style = 'border-slate-200 bg-white text-slate-800 hover:border-indigo-400';
+                const isCorrect = opt === q.target.word_en;
+                const isSelected = selectedOpt === opt;
+                let btnStyle = 'border-slate-200 bg-white text-slate-800 hover:border-indigo-400';
 
                 if (answered) {
-                  if (isCorrect) style = 'border-emerald-500 bg-emerald-50 text-emerald-800 font-black';
-                  else if (isSelected) style = 'border-rose-500 bg-rose-50 text-rose-800 line-through';
-                  else style = 'border-slate-100 bg-slate-50 text-slate-400 opacity-40';
+                  if (isCorrect) btnStyle = 'border-emerald-500 bg-emerald-50 text-emerald-800 font-black shadow-sm';
+                  else if (isSelected) btnStyle = 'border-rose-500 bg-rose-50 text-rose-800 line-through';
+                  else btnStyle = 'border-slate-100 bg-slate-50 text-slate-300 opacity-40';
                 }
 
                 return (
                   <button
-                    key={opt.id}
-                    onClick={() => handleSelectOption(opt)}
+                    key={opt}
+                    onClick={() => handleSelectOption(opt, q.target.word_en)}
                     disabled={answered}
-                    className={`p-4 rounded-2xl border-2 font-bold text-base transition-all cursor-pointer flex items-center justify-center gap-2 ${style}`}
+                    className={`py-5 px-4 rounded-2xl border-2 font-black text-lg transition-all cursor-pointer flex items-center justify-center shadow-xs ${btnStyle}`}
                   >
-                    <WordVisual word={opt} size="sm" />
-                    <span>{opt.word_pt}</span>
+                    {opt}
                   </button>
                 );
               })}
@@ -1478,14 +1489,63 @@ function WeeklyExamRunner({
           </>
         )}
 
+        {/* FASE 2: COMPLETE A FRASE (PORTUGUÊS COM LACUNA) */}
+        {q.phase === 'context' && (
+          <>
+            <div>
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Complete a frase em português:</p>
+              <div className="bg-indigo-50/70 border border-indigo-200 rounded-2xl p-6 my-6">
+                <p className="text-xl sm:text-2xl font-black text-slate-800">
+                  "No meu dia a dia, eu uso/vejo: <span className="text-indigo-600 underline decoration-indigo-400 decoration-wavy">______</span>"
+                </p>
+                <p className="text-xs text-slate-400 font-bold mt-2">
+                  (Dica: a palavra significa <strong>"{q.target.word_pt}"</strong>)
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 mt-4">
+              {q.options?.map((opt) => {
+                const isCorrect = opt === q.target.word_en;
+                const isSelected = selectedOpt === opt;
+                let btnStyle = 'border-slate-200 bg-white text-slate-800 hover:border-indigo-400';
+
+                if (answered) {
+                  if (isCorrect) btnStyle = 'border-emerald-500 bg-emerald-50 text-emerald-800 font-black shadow-sm';
+                  else if (isSelected) btnStyle = 'border-rose-500 bg-rose-50 text-rose-800 line-through';
+                  else btnStyle = 'border-slate-100 bg-slate-50 text-slate-300 opacity-40';
+                }
+
+                return (
+                  <button
+                    key={opt}
+                    onClick={() => handleSelectOption(opt, q.target.word_en)}
+                    disabled={answered}
+                    className={`py-5 px-4 rounded-2xl border-2 font-black text-lg transition-all cursor-pointer flex items-center justify-center shadow-xs ${btnStyle}`}
+                  >
+                    {opt}
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
+
+        {/* FASE 3: MONTE A PALAVRA (SCRAMBLE DE LETRAS • SEM IMAGEM) */}
         {q.phase === 'spelling' && (
           <>
             <div>
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Toca nas letras para formar o nome!</p>
-              <div className="flex justify-center my-4">
-                <WordVisual word={q.target} size="lg" />
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Toque nas letras e monte o nome em inglês:</p>
+              
+              <div className="my-4">
+                <button
+                  onClick={() => speakWord(q.target.word_en)}
+                  className="w-18 h-18 bg-amber-500 hover:bg-amber-600 text-white rounded-full flex items-center justify-center shadow-lg mx-auto active:scale-95 transition-all cursor-pointer"
+                >
+                  <Volume2 className="w-9 h-9" />
+                </button>
+                <h3 className="text-2xl font-black text-slate-800 mt-2">"{q.target.word_pt}"</h3>
               </div>
-              <h3 className="text-xl font-black text-slate-800">{q.target.word_pt}</h3>
 
               <div className="flex justify-center gap-2 my-5 min-h-[48px] flex-wrap">
                 {Array.from({ length: targetCleanLength }).map((_, i) => {
@@ -1498,12 +1558,12 @@ function WeeklyExamRunner({
                     <div
                       key={i}
                       onClick={i === selectedLetterIndices.length - 1 ? handleRemoveLastLetter : undefined}
-                      className={`w-10 h-12 rounded-xl border-2 flex items-center justify-center font-black text-xl transition-all ${
+                      className={`w-11 h-13 rounded-xl border-2 flex items-center justify-center font-black text-2xl transition-all ${
                         char
                           ? 'border-indigo-600 bg-indigo-50 text-indigo-700 cursor-pointer shadow-xs active:scale-95'
                           : 'border-dashed border-slate-300 bg-slate-50 text-transparent'
                       }`}
-                      title={char ? 'Toca para apagar' : ''}
+                      title={char ? 'Tocar para apagar' : ''}
                     >
                       {char || ''}
                     </div>
@@ -1512,86 +1572,128 @@ function WeeklyExamRunner({
               </div>
             </div>
 
-            <div className="flex flex-wrap justify-center gap-2.5 my-2">
-              {q.scrambledLetters?.map((item, i) => {
-                const isUsed = selectedLetterIndices.includes(i);
-                return (
-                  <button
-                    key={item?.id ?? i}
-                    onClick={() => handlePickLetter(i)}
-                    disabled={isUsed || answered}
-                    className={`w-12 h-12 rounded-2xl border-2 font-black text-lg transition-all ${
-                      isUsed
-                        ? 'border-slate-100 bg-slate-100 text-slate-300 opacity-40 cursor-not-allowed'
-                        : 'border-slate-200 bg-white hover:border-indigo-500 text-slate-700 shadow-sm active:scale-95 cursor-pointer'
-                    }`}
-                  >
-                    {item?.char || ''}
-                  </button>
-                );
-              })}
-            </div>
+            <div>
+              <div className="flex flex-wrap justify-center gap-2.5 my-2">
+                {q.scrambledLetters?.map((item, i) => {
+                  const isUsed = selectedLetterIndices.includes(i);
+                  return (
+                    <button
+                      key={item?.id ?? i}
+                      onClick={() => handlePickLetter(i)}
+                      disabled={isUsed || answered}
+                      className={`w-12 h-12 rounded-2xl border-2 font-black text-xl transition-all ${
+                        isUsed
+                          ? 'border-slate-100 bg-slate-100 text-slate-300 opacity-40 cursor-not-allowed'
+                          : 'border-amber-300 bg-white hover:border-amber-500 text-slate-800 shadow-sm active:scale-95 cursor-pointer'
+                      }`}
+                    >
+                      {item?.char || ''}
+                    </button>
+                  );
+                })}
+              </div>
 
-            <div className="flex items-center justify-center gap-3 mt-4">
-              <button
-                type="button"
-                onClick={handleRemoveLastLetter}
-                disabled={selectedLetterIndices.length === 0 || answered}
-                className="px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 font-bold text-xs cursor-pointer transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                ⌫ Apagar Letra
-              </button>
+              <div className="flex items-center justify-center gap-3 mt-4">
+                <button
+                  type="button"
+                  onClick={handleRemoveLastLetter}
+                  disabled={selectedLetterIndices.length === 0 || answered}
+                  className="px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 font-bold text-xs cursor-pointer transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  ⌫ Apagar
+                </button>
 
-              <button
-                type="button"
-                onClick={handleConfirmSpelling}
-                disabled={!isSpellingComplete || answered}
-                className={`px-6 py-2.5 rounded-xl font-black text-xs transition-all shadow-sm ${
-                  isSpellingComplete && !answered
-                    ? 'bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer hover:scale-105 active:scale-95'
-                    : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                }`}
-              >
-                Confirmar Palavra ✔
-              </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmSpelling}
+                  disabled={!isSpellingComplete || answered}
+                  className={`px-6 py-2.5 rounded-xl font-black text-xs transition-all shadow-sm ${
+                    isSpellingComplete && !answered
+                      ? 'bg-amber-600 hover:bg-amber-700 text-white cursor-pointer hover:scale-105 active:scale-95'
+                      : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                  }`}
+                >
+                  Confirmar Letras ✔
+                </button>
+              </div>
             </div>
           </>
         )}
 
-        {q.phase === 'sound_match' && (
+        {/* FASE 4: QUAL É EM INGLÊS? (PORTUGUÊS ESCRITO -> INGLÊS) */}
+        {q.phase === 'word_find' && (
           <>
             <div>
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Toca no som e encontra a figura!</p>
-              <button
-                onClick={() => speakWord(q.target.word_en)}
-                className="w-20 h-20 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full flex items-center justify-center shadow-lg mx-auto my-4 active:scale-95 transition-all cursor-pointer"
-              >
-                <Volume2 className="w-10 h-10" />
-              </button>
-              <p className="text-xs text-slate-400 font-semibold">Qual desenho corresponde ao som?</p>
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Tradução para o Inglês:</p>
+              <div className="my-8">
+                <p className="text-xs text-slate-400 font-bold mb-1">Como se escreve:</p>
+                <h3 className="text-4xl font-black text-slate-800">"{q.target.word_pt}"</h3>
+              </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 mt-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 mt-4">
               {q.options?.map((opt) => {
-                const isCorrect = opt.id === q.target.id;
-                const isSelected = selectedOpt === opt.id;
-                let cardStyle = 'border-slate-200 bg-slate-50 hover:bg-white hover:border-indigo-400';
+                const isCorrect = opt === q.target.word_en;
+                const isSelected = selectedOpt === opt;
+                let btnStyle = 'border-slate-200 bg-white text-slate-800 hover:border-indigo-400';
 
                 if (answered) {
-                  if (isCorrect) cardStyle = 'border-emerald-500 bg-emerald-50 shadow-md ring-2 ring-emerald-400';
-                  else if (isSelected) cardStyle = 'border-rose-500 bg-rose-50 opacity-60';
-                  else cardStyle = 'border-slate-100 opacity-30';
+                  if (isCorrect) btnStyle = 'border-emerald-500 bg-emerald-50 text-emerald-800 font-black shadow-sm';
+                  else if (isSelected) btnStyle = 'border-rose-500 bg-rose-50 text-rose-800 line-through';
+                  else btnStyle = 'border-slate-100 bg-slate-50 text-slate-300 opacity-40';
                 }
 
                 return (
                   <button
-                    key={opt.id}
-                    onClick={() => handleSelectOption(opt)}
+                    key={opt}
+                    onClick={() => handleSelectOption(opt, q.target.word_en)}
                     disabled={answered}
-                    className={`py-6 rounded-2xl border-2 transition-all cursor-pointer flex flex-col items-center justify-center gap-1 ${cardStyle}`}
+                    className={`py-5 px-4 rounded-2xl border-2 font-black text-lg transition-all cursor-pointer flex items-center justify-center shadow-xs ${btnStyle}`}
                   >
-                    <WordVisual word={opt} size="lg" />
-                    <span className="text-xs font-black text-slate-700 mt-2">{opt.word_pt}</span>
+                    {opt}
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
+
+        {/* FASE 5: O QUE SIGNIFICA? (INGLÊS ESCRITO + ÁUDIO -> PORTUGUÊS) */}
+        {q.phase === 'match' && (
+          <>
+            <div>
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Significado em Português:</p>
+              <div className="my-6">
+                <button
+                  onClick={() => speakWord(q.target.word_en)}
+                  className="inline-flex items-center gap-1.5 text-indigo-600 bg-indigo-50 border border-indigo-200 text-xs font-bold px-4 py-1.5 rounded-full cursor-pointer hover:bg-indigo-100 mb-3"
+                >
+                  <Volume2 className="w-4 h-4" /> Ouvir pronúncia
+                </button>
+                <h3 className="text-4xl font-black text-slate-800">"{q.target.word_en}"</h3>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 mt-4">
+              {q.options?.map((opt) => {
+                const isCorrect = opt === q.target.word_pt;
+                const isSelected = selectedOpt === opt;
+                let btnStyle = 'border-slate-200 bg-white text-slate-800 hover:border-indigo-400';
+
+                if (answered) {
+                  if (isCorrect) btnStyle = 'border-emerald-500 bg-emerald-50 text-emerald-800 font-black shadow-sm';
+                  else if (isSelected) btnStyle = 'border-rose-500 bg-rose-50 text-rose-800 line-through';
+                  else btnStyle = 'border-slate-100 bg-slate-50 text-slate-300 opacity-40';
+                }
+
+                return (
+                  <button
+                    key={opt}
+                    onClick={() => handleSelectOption(opt, q.target.word_pt)}
+                    disabled={answered}
+                    className={`py-5 px-4 rounded-2xl border-2 font-black text-lg transition-all cursor-pointer flex items-center justify-center shadow-xs ${btnStyle}`}
+                  >
+                    {opt}
                   </button>
                 );
               })}
