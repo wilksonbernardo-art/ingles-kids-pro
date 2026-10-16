@@ -1120,31 +1120,38 @@ function Step3MiniGames({ words, onComplete }: { words: Word[]; onComplete: () =
   );
 }
 
-/* ==================== SUB-JOGO 1: ESCUTA E ENCONTRA ==================== */
+/* ==================== SUB-JOGO 1: ESCUTA E ENCONTRA (SEM LOOPING) ==================== */
 function SubGameListening({ words, onFinish }: { words: Word[]; onFinish: () => void }) {
   const [round, setRound] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [answered, setAnswered] = useState(false);
   const [options, setOptions] = useState<Word[]>([]);
-  const lastSpokenRound = useRef<number>(-1);
+  const isTransitioning = useRef(false);
 
   const target = words[round];
 
   useEffect(() => {
-    if (!target) return;
-    const wrong = words.filter((w) => w.id !== target.id).sort(() => Math.random() - 0.5).slice(0, 3);
+    if (!target) {
+      onFinish();
+      return;
+    }
+    const wrong = words
+      .filter((w) => w.id !== target.id)
+      .sort(() => Math.random() - 0.5)
+      .slice(0, 3);
+
     setOptions([target, ...wrong].sort(() => Math.random() - 0.5));
     setSelectedId(null);
     setAnswered(false);
+    isTransitioning.current = false;
 
-    if (lastSpokenRound.current !== round) {
-      lastSpokenRound.current = round;
-      speakWord(target.word_en);
-    }
-  }, [round, target, words]);
+    const timer = setTimeout(() => speakWord(target.word_en), 250);
+    return () => clearTimeout(timer);
+  }, [round, target?.id]); // Dependência pontual pelo ID para não disparar re-renders desnecessários
 
   const handlePick = (w: Word) => {
-    if (answered) return;
+    if (answered || isTransitioning.current) return;
+    isTransitioning.current = true;
     setSelectedId(w.id);
     setAnswered(true);
 
@@ -1153,11 +1160,15 @@ function SubGameListening({ words, onFinish }: { words: Word[]; onFinish: () => 
     }
 
     setTimeout(() => {
-      if (round < words.length - 1) {
-        setRound((r) => r + 1);
-      } else {
-        onFinish();
-      }
+      setRound((prevRound) => {
+        const next = prevRound + 1;
+        if (next < words.length) {
+          return next;
+        } else {
+          onFinish();
+          return prevRound;
+        }
+      });
     }, 1000);
   };
 
@@ -1443,39 +1454,50 @@ function SubGameSpelling({ words, onFinish }: { words: Word[]; onFinish: () => v
   );
 }
 
-/* ==================== SUB-JOGO 4: BALÃO MÁGICO ==================== */
+/* ==================== SUB-JOGO 4: BALÃO MÁGICO (SEM LOOPING) ==================== */
 function SubGameBalloon({ words, onFinish }: { words: Word[]; onFinish: () => void }) {
   const [round, setRound] = useState(0);
   const [poppedId, setPoppedId] = useState<string | null>(null);
   const [options, setOptions] = useState<Word[]>([]);
-  const lastSpokenRound = useRef<number>(-1);
+  const isTransitioning = useRef(false);
 
   const target = words[round];
 
   useEffect(() => {
-    if (!target) return;
-    const wrong = words.filter((w) => w.id !== target.id).sort(() => Math.random() - 0.5).slice(0, 2);
+    if (!target) {
+      onFinish();
+      return;
+    }
+    const wrong = words
+      .filter((w) => w.id !== target.id)
+      .sort(() => Math.random() - 0.5)
+      .slice(0, 2);
+
     setOptions([target, ...wrong].sort(() => Math.random() - 0.5));
     setPoppedId(null);
+    isTransitioning.current = false;
 
-    if (lastSpokenRound.current !== round) {
-      lastSpokenRound.current = round;
-      speakWord(target.word_en);
-    }
-  }, [round, target, words]);
+    const timer = setTimeout(() => speakWord(target.word_en), 250);
+    return () => clearTimeout(timer);
+  }, [round, target?.id]);
 
   const handlePop = (item: Word) => {
-    if (poppedId) return;
+    if (poppedId || isTransitioning.current) return;
     setPoppedId(item.id);
 
     if (item.id === target.id) {
+      isTransitioning.current = true;
       playSuccessSound();
       setTimeout(() => {
-        if (round < words.length - 1) {
-          setRound((r) => r + 1);
-        } else {
-          onFinish();
-        }
+        setRound((prevRound) => {
+          const next = prevRound + 1;
+          if (next < words.length) {
+            return next;
+          } else {
+            onFinish();
+            return prevRound;
+          }
+        });
       }, 700);
     } else {
       setTimeout(() => setPoppedId(null), 600);
