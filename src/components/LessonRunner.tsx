@@ -430,7 +430,7 @@ export default function LessonRunner({
   );
 }
 
-/* ==================== PASSO 3: CIRCUITO DE 4 MINIJOGOS (BLINDADO) ==================== */
+/* ==================== PASSO 3: CIRCUITO DE 4 MINIJOGOS (CORRIGIDO) ==================== */
 function Step3MiniGames({ 
   words, 
   poolWords, 
@@ -446,10 +446,18 @@ function Step3MiniGames({
   const [game3Done, setGame3Done] = useState(false);
   const [game4Done, setGame4Done] = useState(false);
 
-  // Palavras embaralhadas de forma estável (sem re-gerar a cada renderização)
+  // 1. Embaralha as palavras da lição de forma estável
   const randomizedLessonWords = useMemo(() => {
     return [...words].sort(() => Math.random() - 0.5);
   }, [words]);
+
+  // 2. Lista estável específica para o jogo da memória (não muda a cada clique)
+  const memoryWords = useMemo(() => {
+    if (randomizedLessonWords.length >= 4) {
+      return randomizedLessonWords.slice(0, 6);
+    }
+    return poolWords.slice(0, 4);
+  }, [randomizedLessonWords, poolWords]);
 
   if (!words || words.length === 0) {
     return (
@@ -514,7 +522,8 @@ function Step3MiniGames({
 
       {currentGame === 2 && (
         <SubGameMemory
-          words={randomizedLessonWords.length >= 4 ? randomizedLessonWords.slice(0, 6) : poolWords.slice(0, 4)}
+          key="subgame-memory-fixed"
+          words={memoryWords}
           onFinish={() => {
             setGame2Done(true);
             setCurrentGame(3);
@@ -654,45 +663,63 @@ function SubGameListening({
   );
 }
 
-/* ==================== SUB-JOGO 2: SUPER MEMÓRIA ==================== */
+/* ==================== SUB-JOGO 2: SUPER MEMÓRIA (BARALHO FIXO) ==================== */
 function SubGameMemory({ words, onFinish }: { words: Word[]; onFinish: () => void }) {
   type Card = { uid: string; word: Word; flipped: boolean; matched: boolean };
-  const [cards, setCards] = useState<Card[]>([]);
 
-  useEffect(() => {
+  // Inicializa o baralho UMA ÚNICA VEZ na montagem usando useState com função (lazy initialization)
+  const [cards, setCards] = useState<Card[]>(() => {
     const deck: Card[] = [];
     words.forEach((w) => {
       deck.push({ uid: `${w.id}-1`, word: w, flipped: false, matched: false });
       deck.push({ uid: `${w.id}-2`, word: w, flipped: false, matched: false });
     });
-    setCards(deck.sort(() => Math.random() - 0.5));
-  }, [words]);
+    return deck.sort(() => Math.random() - 0.5);
+  });
+
+  const isCheckingRef = useRef(false);
 
   const handleCardClick = (card: Card) => {
-    if (card.flipped || card.matched) return;
-    const flipped = cards.filter((c) => c.flipped && !c.matched);
-    if (flipped.length >= 2) return;
+    // Se a carta já estiver virada, combinada ou se estiver no meio da checagem de par, ignora o clique
+    if (card.flipped || card.matched || isCheckingRef.current) return;
+
+    const flippedCards = cards.filter((c) => c.flipped && !c.matched);
+    if (flippedCards.length >= 2) return;
 
     speakWord(card.word.word_en);
-    const updated = cards.map((c) => (c.uid === card.uid ? { ...c, flipped: true } : c));
-    setCards(updated);
 
-    if (flipped.length === 1) {
-      const first = flipped[0];
-      if (first.word.id === card.word.id) {
+    // Vira a carta clicada
+    const updatedCards = cards.map((c) => (c.uid === card.uid ? { ...c, flipped: true } : c));
+    setCards(updatedCards);
+
+    // Se agora temos 2 cartas viradas para checar
+    if (flippedCards.length === 1) {
+      const firstCard = flippedCards[0];
+      isCheckingRef.current = true;
+
+      if (firstCard.word.id === card.word.id) {
+        // Acertou o par!
+        playSuccessSound();
         setTimeout(() => {
           setCards((prev) => {
-            const next = prev.map((c) => (c.word.id === card.word.id ? { ...c, matched: true } : c));
+            const next = prev.map((c) =>
+              c.word.id === card.word.id ? { ...c, matched: true, flipped: true } : c
+            );
             if (next.every((c) => c.matched)) {
-              setTimeout(onFinish, 600);
+              setTimeout(onFinish, 700);
             }
             return next;
           });
-        }, 400);
+          isCheckingRef.current = false;
+        }, 500);
       } else {
+        // Errou o par: desvira após 900ms
         setTimeout(() => {
-          setCards((prev) => prev.map((c) => (c.matched ? c : { ...c, flipped: false })));
-        }, 800);
+          setCards((prev) =>
+            prev.map((c) => (c.matched ? c : { ...c, flipped: false }))
+          );
+          isCheckingRef.current = false;
+        }, 900);
       }
     }
   };
