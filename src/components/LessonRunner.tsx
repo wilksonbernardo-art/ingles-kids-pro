@@ -968,7 +968,7 @@ function Step2Offline({ words, onComplete }: { words: Word[]; onComplete: () => 
   );
 }
 
-/* ==================== PASSO 3: CIRCUITO DE 4 MINIJOGOS ==================== */
+/* ==================== PASSO 3: CIRCUITO DE 4 MINIJOGOS (ORDEM ALEATÓRIA) ==================== */
 function Step3MiniGames({ words, onComplete }: { words: Word[]; onComplete: () => void }) {
   const [currentGame, setCurrentGame] = useState<1 | 2 | 3 | 4>(1);
   const [game1Done, setGame1Done] = useState(false);
@@ -976,14 +976,19 @@ function Step3MiniGames({ words, onComplete }: { words: Word[]; onComplete: () =
   const [game3Done, setGame3Done] = useState(false);
   const [game4Done, setGame4Done] = useState(false);
 
-  const lessonWords = useRef<Word[]>([]);
+  // Guarda e embaralha as palavras especificamente para os minijogos
+  const [shuffledPool, setShuffledPool] = useState<Word[]>([]);
+
+  // Função auxiliar para criar uma lista embaralhada sem mutar o original
+  const getShuffledWords = (list: Word[]) => [...list].sort(() => Math.random() - 0.5);
+
   useEffect(() => {
-    if (lessonWords.current.length === 0 && words.length > 0) {
-      lessonWords.current = words;
+    if (words.length > 0) {
+      setShuffledPool(getShuffledWords(words));
     }
   }, [words]);
 
-  const activeWords = lessonWords.current.length > 0 ? lessonWords.current : words;
+  const activeWords = shuffledPool.length > 0 ? shuffledPool : words;
 
   if (activeWords.length === 0) {
     return (
@@ -1072,7 +1077,7 @@ function Step3MiniGames({ words, onComplete }: { words: Word[]; onComplete: () =
       {currentGame === 1 && (
         <SubGameListening
           key="subgame-1"
-          words={activeWords.slice(0, 4)}
+          words={getShuffledWords(activeWords).slice(0, 4)}
           onFinish={() => {
             setGame1Done(true);
             setCurrentGame(2);
@@ -1084,7 +1089,7 @@ function Step3MiniGames({ words, onComplete }: { words: Word[]; onComplete: () =
       {currentGame === 2 && (
         <SubGameMemory
           key="subgame-2"
-          words={activeWords.length >= 6 ? activeWords.slice(0, 6) : activeWords}
+          words={getShuffledWords(activeWords).slice(0, activeWords.length >= 6 ? 6 : activeWords.length)}
           onFinish={() => {
             setGame2Done(true);
             setCurrentGame(3);
@@ -1096,7 +1101,7 @@ function Step3MiniGames({ words, onComplete }: { words: Word[]; onComplete: () =
       {currentGame === 3 && (
         <SubGameSpelling
           key="subgame-3"
-          words={activeWords.slice(0, 3)}
+          words={getShuffledWords(activeWords).slice(0, 3)}
           onFinish={() => {
             setGame3Done(true);
             setCurrentGame(4);
@@ -1108,7 +1113,7 @@ function Step3MiniGames({ words, onComplete }: { words: Word[]; onComplete: () =
       {currentGame === 4 && (
         <SubGameBalloon
           key="subgame-4"
-          words={activeWords.slice(0, 4)}
+          words={getShuffledWords(activeWords).slice(0, 4)}
           onFinish={() => {
             setGame4Done(true);
             playSuccessSound();
