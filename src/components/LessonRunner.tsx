@@ -1,15 +1,15 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { ArrowLeft, Volume2, Check, Lock, Star, Pencil, ChevronRight } from 'lucide-react';
 import type { Module, Word, LessonProgress } from '@/lib/supabase';
 import { supabase, LESSON_STEPS } from '@/lib/supabase';
 import { speakWord, playSuccessSound } from '@/lib/speech';
 import { celebrate } from '@/lib/confetti';
 import WordVisual from '@/components/WordVisual';
+import { checkAndAwardBadges } from '@/lib/badges';
 
-// Função de conversão da pronúncia para grafia intuitiva
+// Função auxiliar para fonética amigável
 function formatFriendlyPhonetic(phonetic?: string | null): string {
   if (!phonetic) return '';
-
   return phonetic
     .replace(/θ/g, 'f')
     .replace(/ð/g, 'd')
@@ -54,6 +54,7 @@ export default function LessonRunner({
 }: LessonRunnerProps) {
   const isExam = lessonDay === 6;
   const [words, setWords] = useState<Word[]>([]);
+  const [moduleAllWords, setModuleAllWords] = useState<Word[]>([]); // Pool de palavras reserva para preencher opções erradas
   const [currentStep, setCurrentStep] = useState(existingProgress?.current_step || 1);
   const [timeLeft, setTimeLeft] = useState(STEP_DURATION);
   const [stepDone, setStepDone] = useState<Set<number>>(new Set());
@@ -68,14 +69,19 @@ export default function LessonRunner({
     (async () => {
       setLoading(true);
 
-      if (isExam) {
-        const { data, error } = await supabase
-          .from('words')
-          .select('*')
-          .eq('module_id', module.id)
-          .order('word_order', { ascending: true });
+      // Sempre busca todas as palavras do módulo para usar como alternativas incorretas nos jogos
+      const { data: allModWords } = await supabase
+        .from('words')
+        .select('*')
+        .eq('module_id', module.id)
+        .order('word_order', { ascending: true });
 
-        if (!error && data) setWords(data as Word[]);
+      if (allModWords) {
+        setModuleAllWords(allModWords as Word[]);
+      }
+
+      if (isExam) {
+        if (allModWords) setWords(allModWords as Word[]);
       } else {
         let targetLessonId: string | null = null;
         if (lessonDay) {
@@ -97,7 +103,12 @@ export default function LessonRunner({
         }
 
         const { data, error } = await query;
-        if (!error && data) setWords(data as Word[]);
+        if (!error && data && data.length > 0) {
+          setWords(data as Word[]);
+        } else if (allModWords && allModWords.length > 0) {
+          // Fallback seguro: se a aula específica tiver poucas palavras, pega do módulo
+          setWords(allModWords.slice(0, 5) as Word[]);
+        }
       }
 
       setLoading(false);
@@ -230,6 +241,7 @@ export default function LessonRunner({
       onStarsUpdated();
     } catch (e) {}
 
+    await checkAndAwardBadges(profileId);
     celebrate();
     setLessonComplete(true);
   }
@@ -372,7 +384,13 @@ export default function LessonRunner({
       <div className="bg-white rounded-3xl shadow-md border border-slate-100 p-8 md:p-12 min-h-[420px] flex flex-col justify-center">
         {currentStep === 1 && <Step1Flashcards words={words} onComplete={() => completeStep(1)} />}
         {currentStep === 2 && <Step2Offline words={words} onComplete={() => completeStep(2)} />}
-        {currentStep === 3 && <Step3MiniGames words={words} onComplete={() => completeStep(3)} />}
+        {currentStep === 3 && (
+          <Step3MiniGames 
+            words={words} 
+            poolWords={moduleAllWords.length > 0 ? moduleAllWords : words} 
+            onComplete={() => completeStep(3)} 
+          />
+        )}
         {currentStep === 4 && <Step4RealChallenge words={words} onShowPin={() => setShowPinModal(true)} />}
       </div>
 
@@ -410,6 +428,671 @@ export default function LessonRunner({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/* ==================== PASSO 3: CIRCUITO DE 4 MINIJOGOS (BLINDADO) ==================== */
+function Step3MiniGames({ 
+  words, 
+  poolWords, 
+  onComplete 
+}: { 
+  words: Word[]; 
+  poolWords: Word[]; 
+  onComplete: () => void 
+}) {
+  const [currentGame, setCurrentGame] = useState<1 | 2 | 3 | 4>(1);
+  const [game1Done, setGame1Done] = useState(false);
+  const [game2Done, setGame2Done] = useState(false);
+  const [game3Done, setGame3Done] = useState(false);
+  const [game4Done, setGame4Done] = useState(false);
+
+  // Palavras embaralhadas de forma estável (sem re-gerar a cada renderização)
+  const randomizedLessonWords = useMemo(() => {
+    return [...words].sort(() => Math.random() - 0.5);
+  }, [words]);
+
+  if (!words || words.length === 0) {
+    return (
+      <div className="text-center py-8">
+        <p className="text-slate-400 font-bold mb-4">Avançando exercícios...</p>
+        <button onClick={onComplete} className="bg-indigo-600 text-white font-bold px-8 py-3 rounded-2xl cursor-pointer">
+          Avançar
+        </button>
+      </div>
+    );
+  }
+
+  if (game1Done && game2Done && game3Done && game4Done) {
+    return (
+      <div className="text-center py-6 max-w-md mx-auto">
+        <div className="text-7xl mb-3 animate-bounce">🏆</div>
+        <h3 className="text-2xl font-black text-slate-800 mb-1">Circuito Concluído!</h3>
+        <p className="text-slate-500 font-semibold text-sm mb-6">
+          Você superou todos os 4 minijogos com sucesso!
+        </p>
+        <button
+          onClick={onComplete}
+          className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold py-4 px-8 rounded-2xl shadow-lg hover:scale-102 active:scale-95 transition-all cursor-pointer text-base"
+        >
+          Avançar para o Desafio com os Pais ➔
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full max-w-2xl mx-auto py-2">
+      <div className="flex items-center justify-center gap-1.5 md:gap-2 mb-6 flex-wrap">
+        <span className={`px-3 py-1 rounded-full text-xs font-black ${currentGame === 1 ? 'bg-indigo-600 text-white' : game1Done ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-400'}`}>
+          {game1Done ? '✔ 1. Escuta' : '1. Escuta'}
+        </span>
+        <span className="text-slate-300 font-bold">➔</span>
+        <span className={`px-3 py-1 rounded-full text-xs font-black ${currentGame === 2 ? 'bg-purple-600 text-white' : game2Done ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-400'}`}>
+          {game2Done ? '✔ 2. Memória' : '2. Memória'}
+        </span>
+        <span className="text-slate-300 font-bold">➔</span>
+        <span className={`px-3 py-1 rounded-full text-xs font-black ${currentGame === 3 ? 'bg-amber-600 text-white' : game3Done ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-400'}`}>
+          {game3Done ? '✔ 3. Escrever' : '3. Escrever'}
+        </span>
+        <span className="text-slate-300 font-bold">➔</span>
+        <span className={`px-3 py-1 rounded-full text-xs font-black ${currentGame === 4 ? 'bg-sky-600 text-white' : game4Done ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-400'}`}>
+          {game4Done ? '✔ 4. Balões' : '4. Balões'}
+        </span>
+      </div>
+
+      {currentGame === 1 && (
+        <SubGameListening
+          words={randomizedLessonWords}
+          poolWords={poolWords}
+          onFinish={() => {
+            setGame1Done(true);
+            setCurrentGame(2);
+            playSuccessSound();
+          }}
+        />
+      )}
+
+      {currentGame === 2 && (
+        <SubGameMemory
+          words={randomizedLessonWords.length >= 4 ? randomizedLessonWords.slice(0, 6) : poolWords.slice(0, 4)}
+          onFinish={() => {
+            setGame2Done(true);
+            setCurrentGame(3);
+            playSuccessSound();
+          }}
+        />
+      )}
+
+      {currentGame === 3 && (
+        <SubGameSpelling
+          words={randomizedLessonWords.slice(0, 3)}
+          onFinish={() => {
+            setGame3Done(true);
+            setCurrentGame(4);
+            playSuccessSound();
+          }}
+        />
+      )}
+
+      {currentGame === 4 && (
+        <SubGameBalloon
+          words={randomizedLessonWords}
+          poolWords={poolWords}
+          onFinish={() => {
+            setGame4Done(true);
+            playSuccessSound();
+            celebrate();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ==================== SUB-JOGO 1: ESCUTA E ENCONTRA (SEM LOOP) ==================== */
+function SubGameListening({ 
+  words, 
+  poolWords, 
+  onFinish 
+}: { 
+  words: Word[]; 
+  poolWords: Word[]; 
+  onFinish: () => void 
+}) {
+  const [round, setRound] = useState(0);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [answered, setAnswered] = useState(false);
+  const [options, setOptions] = useState<Word[]>([]);
+  const isTransitioning = useRef(false);
+
+  const target = words[round];
+
+  useEffect(() => {
+    // Se não há target ou já passou do fim da lista, encerra a fase imediatamente
+    if (!target) {
+      onFinish();
+      return;
+    }
+
+    // Busca opções erradas de todo o pool de palavras do módulo
+    const wrong = poolWords
+      .filter((w) => w.id !== target.id)
+      .sort(() => Math.random() - 0.5)
+      .slice(0, 3);
+
+    setOptions([target, ...wrong].sort(() => Math.random() - 0.5));
+    setSelectedId(null);
+    setAnswered(false);
+    isTransitioning.current = false;
+
+    const timer = setTimeout(() => speakWord(target.word_en), 250);
+    return () => clearTimeout(timer);
+  }, [round, target?.id]);
+
+  const handlePick = (w: Word) => {
+    if (answered || isTransitioning.current) return;
+    isTransitioning.current = true;
+    setSelectedId(w.id);
+    setAnswered(true);
+
+    if (w.id === target.id) {
+      playSuccessSound();
+    }
+
+    setTimeout(() => {
+      if (round + 1 < words.length) {
+        setRound((r) => r + 1);
+      } else {
+        onFinish();
+      }
+    }, 900);
+  };
+
+  if (!target) return null;
+
+  return (
+    <div className="bg-indigo-50/60 border-2 border-indigo-100 rounded-3xl p-6 text-center">
+      <span className="text-xs font-bold text-indigo-700 uppercase tracking-widest">
+        Fase 1 • Escuta & Figura ({round + 1}/{words.length})
+      </span>
+
+      <button
+        onClick={() => speakWord(target.word_en)}
+        className="w-20 h-20 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full flex items-center justify-center shadow-lg mx-auto my-4 active:scale-95 transition-all cursor-pointer"
+      >
+        <Volume2 className="w-10 h-10" />
+      </button>
+
+      <h4 className="text-xl font-black text-slate-700 mb-5">"{target.word_en}"</h4>
+
+      <div className="grid grid-cols-2 gap-3.5">
+        {options.map((opt) => {
+          const isCorrect = opt.id === target.id;
+          const isSelected = selectedId === opt.id;
+          let btnStyle = 'border-slate-200 bg-white hover:border-indigo-400 text-slate-800';
+
+          if (answered) {
+            if (isCorrect) btnStyle = 'border-emerald-500 bg-emerald-50 text-emerald-800 shadow-sm';
+            else if (isSelected) btnStyle = 'border-rose-400 bg-rose-50 text-rose-700 opacity-60';
+            else btnStyle = 'border-slate-100 bg-slate-50 text-slate-300 opacity-30';
+          }
+
+          return (
+            <button
+              key={opt.id}
+              onClick={() => handlePick(opt)}
+              disabled={answered}
+              className={`p-4 rounded-2xl border-2 font-bold transition-all cursor-pointer flex flex-col items-center justify-center gap-1 shadow-xs active:scale-95 ${btnStyle}`}
+            >
+              <WordVisual word={opt} size="md" />
+              <span className="text-xs font-extrabold mt-1">{opt.word_pt}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ==================== SUB-JOGO 2: SUPER MEMÓRIA ==================== */
+function SubGameMemory({ words, onFinish }: { words: Word[]; onFinish: () => void }) {
+  type Card = { uid: string; word: Word; flipped: boolean; matched: boolean };
+  const [cards, setCards] = useState<Card[]>([]);
+
+  useEffect(() => {
+    const deck: Card[] = [];
+    words.forEach((w) => {
+      deck.push({ uid: `${w.id}-1`, word: w, flipped: false, matched: false });
+      deck.push({ uid: `${w.id}-2`, word: w, flipped: false, matched: false });
+    });
+    setCards(deck.sort(() => Math.random() - 0.5));
+  }, [words]);
+
+  const handleCardClick = (card: Card) => {
+    if (card.flipped || card.matched) return;
+    const flipped = cards.filter((c) => c.flipped && !c.matched);
+    if (flipped.length >= 2) return;
+
+    speakWord(card.word.word_en);
+    const updated = cards.map((c) => (c.uid === card.uid ? { ...c, flipped: true } : c));
+    setCards(updated);
+
+    if (flipped.length === 1) {
+      const first = flipped[0];
+      if (first.word.id === card.word.id) {
+        setTimeout(() => {
+          setCards((prev) => {
+            const next = prev.map((c) => (c.word.id === card.word.id ? { ...c, matched: true } : c));
+            if (next.every((c) => c.matched)) {
+              setTimeout(onFinish, 600);
+            }
+            return next;
+          });
+        }, 400);
+      } else {
+        setTimeout(() => {
+          setCards((prev) => prev.map((c) => (c.matched ? c : { ...c, flipped: false })));
+        }, 800);
+      }
+    }
+  };
+
+  return (
+    <div className="bg-purple-50/70 border-2 border-purple-100 rounded-3xl p-5 md:p-8 text-center max-w-lg mx-auto shadow-xs">
+      <span className="text-xs font-black text-purple-700 bg-purple-100 px-3 py-1 rounded-full uppercase tracking-wider">
+        Fase 2 • Super Memória ({cards.length / 2} pares)
+      </span>
+      <p className="text-xs font-bold text-slate-400 mt-2 mb-6">
+        Encontre os pares das palavras de hoje!
+      </p>
+
+      <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 sm:gap-4 w-full">
+        {cards.map((c) => (
+          <button
+            key={c.uid}
+            onClick={() => handleCardClick(c)}
+            className={`w-full aspect-square rounded-2xl sm:rounded-3xl border-2 flex flex-col items-center justify-center p-2 transition-all duration-200 cursor-pointer ${
+              c.flipped || c.matched
+                ? 'bg-white border-purple-400 shadow-md scale-102 ring-2 ring-purple-100'
+                : 'bg-gradient-to-br from-purple-500 via-indigo-500 to-indigo-600 border-purple-300 shadow-sm hover:shadow-md hover:scale-103 active:scale-95 text-white'
+            }`}
+          >
+            {c.flipped || c.matched ? (
+              <div className="flex flex-col items-center justify-center h-full w-full">
+                <WordVisual word={c.word} size="md" />
+                <span className="text-[11px] sm:text-xs font-black text-slate-800 mt-1.5 truncate max-w-full px-1">
+                  {c.word.word_en}
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center h-full w-full select-none">
+                <span className="text-2xl sm:text-3xl font-black text-white/90 drop-shadow-xs">
+                  ❓
+                </span>
+              </div>
+            )}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ==================== SUB-JOGO 3: OUVE & ESCREVE ==================== */
+function SubGameSpelling({ words, onFinish }: { words: Word[]; onFinish: () => void }) {
+  const [round, setRound] = useState(0);
+  const [pickedIndices, setPickedIndices] = useState<number[]>([]);
+  const [scramble, setScramble] = useState<{ id: number; char: string }[]>([]);
+  const [feedback, setFeedback] = useState<'idle' | 'success' | 'error'>('idle');
+  const isTransitioning = useRef(false);
+
+  const target = words[round];
+  const targetClean = target ? target.word_en.toUpperCase().replace(/[^A-Z]/g, '') : '';
+
+  useEffect(() => {
+    if (!target) {
+      onFinish();
+      return;
+    }
+    const chars = targetClean.split('').map((char, index) => ({ id: index, char }));
+    setScramble(chars.sort(() => Math.random() - 0.5));
+    setPickedIndices([]);
+    setFeedback('idle');
+    isTransitioning.current = false;
+
+    const timer = setTimeout(() => speakWord(target.word_en), 250);
+    return () => clearTimeout(timer);
+  }, [round, target?.id, targetClean]);
+
+  const handlePickLetter = (idx: number) => {
+    if (pickedIndices.includes(idx) || feedback === 'success' || isTransitioning.current) return;
+    setPickedIndices((prev) => [...prev, idx]);
+  };
+
+  const handleRemoveLetter = () => {
+    if (pickedIndices.length === 0 || feedback === 'success' || isTransitioning.current) return;
+    setPickedIndices((prev) => prev.slice(0, -1));
+  };
+
+  const handleCheckSpelling = () => {
+    if (isTransitioning.current) return;
+    const currentWord = pickedIndices
+      .map((i) => scramble[i]?.char || '')
+      .join('');
+
+    if (currentWord === targetClean) {
+      isTransitioning.current = true;
+      setFeedback('success');
+      playSuccessSound();
+      setTimeout(() => {
+        if (round + 1 < words.length) {
+          setRound((r) => r + 1);
+        } else {
+          onFinish();
+        }
+      }, 1000);
+    } else {
+      setFeedback('error');
+      setTimeout(() => {
+        setPickedIndices([]);
+        setFeedback('idle');
+      }, 800);
+    }
+  };
+
+  if (!target) return null;
+
+  return (
+    <div className="bg-amber-50/70 border-2 border-amber-200 rounded-3xl p-6 text-center max-w-lg mx-auto shadow-xs">
+      <span className="text-xs font-black text-amber-800 bg-amber-200/80 px-3 py-1 rounded-full uppercase tracking-wider">
+        Fase 3 • Ouve & Escreve ({round + 1}/{words.length})
+      </span>
+
+      <div className="my-4">
+        <button
+          onClick={() => speakWord(target.word_en)}
+          className="w-18 h-18 bg-amber-500 hover:bg-amber-600 text-white rounded-full flex items-center justify-center shadow-lg mx-auto active:scale-95 transition-all cursor-pointer"
+        >
+          <Volume2 className="w-9 h-9" />
+        </button>
+        <div className="flex items-center justify-center gap-2 mt-2.5">
+          <p className="text-xs text-slate-500 font-bold">
+            Significado: <strong className="text-slate-800">{target.word_pt}</strong>
+          </p>
+          <WordVisual word={target} size="sm" />
+        </div>
+      </div>
+
+      <div className="flex justify-center gap-2 sm:gap-2.5 my-6 flex-wrap">
+        {Array.from({ length: targetClean.length }).map((_, i) => {
+          const letterIdx = pickedIndices[i];
+          const char = letterIdx !== undefined && scramble[letterIdx] ? scramble[letterIdx]?.char : '';
+
+          return (
+            <div
+              key={i}
+              onClick={i === pickedIndices.length - 1 ? handleRemoveLetter : undefined}
+              className={`w-12 h-12 sm:w-14 sm:h-14 rounded-2xl border-2 flex items-center justify-center font-black text-xl sm:text-2xl transition-all ${
+                char
+                  ? feedback === 'success'
+                    ? 'border-emerald-500 bg-emerald-100 text-emerald-800 shadow-sm'
+                    : feedback === 'error'
+                    ? 'border-rose-400 bg-rose-100 text-rose-800 shadow-sm'
+                    : 'border-amber-500 bg-white text-amber-800 shadow-xs cursor-pointer hover:border-rose-400'
+                  : 'border-dashed border-slate-300 bg-white/60'
+              }`}
+            >
+              {char}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="flex justify-center gap-2 sm:gap-2.5 flex-wrap mb-6">
+        {scramble.map((item, idx) => {
+          const isUsed = pickedIndices.includes(idx);
+          return (
+            <button
+              key={item?.id ?? idx}
+              onClick={() => handlePickLetter(idx)}
+              disabled={isUsed || feedback === 'success'}
+              className={`w-12 h-12 sm:w-14 sm:h-14 rounded-2xl font-black text-lg sm:text-xl border-2 transition-all duration-150 ${
+                isUsed
+                  ? 'border-slate-100 bg-slate-100 text-slate-300 opacity-40 cursor-not-allowed'
+                  : 'border-amber-300 bg-white text-amber-900 shadow-sm hover:border-amber-500 hover:scale-105 active:scale-95 cursor-pointer'
+              }`}
+            >
+              {item?.char || ''}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="flex items-center justify-center gap-3">
+        <button
+          type="button"
+          onClick={handleRemoveLetter}
+          disabled={pickedIndices.length === 0 || feedback === 'success'}
+          className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 font-bold text-xs cursor-pointer transition-all disabled:opacity-40"
+        >
+          ⌫ Apagar
+        </button>
+        <button
+          type="button"
+          onClick={handleCheckSpelling}
+          disabled={pickedIndices.length !== targetClean.length || feedback === 'success'}
+          className={`px-6 py-2.5 rounded-xl font-black text-xs transition-all shadow-sm ${
+            pickedIndices.length === targetClean.length && feedback !== 'success'
+              ? 'bg-amber-600 hover:bg-amber-700 text-white cursor-pointer active:scale-95'
+              : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+          }`}
+        >
+          Conferir Palavra ✔
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ==================== SUB-JOGO 4: BALÃO MÁGICO (SEM LOOP) ==================== */
+function SubGameBalloon({ 
+  words, 
+  poolWords, 
+  onFinish 
+}: { 
+  words: Word[]; 
+  poolWords: Word[]; 
+  onFinish: () => void 
+}) {
+  const [round, setRound] = useState(0);
+  const [poppedId, setPoppedId] = useState<string | null>(null);
+  const [options, setOptions] = useState<Word[]>([]);
+  const isTransitioning = useRef(false);
+
+  const target = words[round];
+
+  useEffect(() => {
+    if (!target) {
+      onFinish();
+      return;
+    }
+    // Usa o pool do módulo para sempre ter 2 alternativas erradas
+    const wrong = poolWords
+      .filter((w) => w.id !== target.id)
+      .sort(() => Math.random() - 0.5)
+      .slice(0, 2);
+
+    setOptions([target, ...wrong].sort(() => Math.random() - 0.5));
+    setPoppedId(null);
+    isTransitioning.current = false;
+
+    const timer = setTimeout(() => speakWord(target.word_en), 250);
+    return () => clearTimeout(timer);
+  }, [round, target?.id]);
+
+  const handlePop = (item: Word) => {
+    if (poppedId || isTransitioning.current) return;
+    setPoppedId(item.id);
+
+    if (item.id === target.id) {
+      isTransitioning.current = true;
+      playSuccessSound();
+      setTimeout(() => {
+        if (round + 1 < words.length) {
+          setRound((r) => r + 1);
+        } else {
+          onFinish();
+        }
+      }, 700);
+    } else {
+      setTimeout(() => setPoppedId(null), 600);
+    }
+  };
+
+  if (!target) return null;
+
+  return (
+    <div className="bg-sky-50/60 border-2 border-sky-100 rounded-3xl p-6 text-center">
+      <span className="text-xs font-bold text-sky-700 uppercase tracking-widest">
+        Fase 4 • Estoure o Balão ({round + 1}/{words.length})
+      </span>
+
+      <h4 className="text-lg font-black text-slate-800 mt-3 mb-1">
+        Qual é o balão de: <span className="text-sky-600">"{target.word_en}"</span>?
+      </h4>
+
+      <button
+        onClick={() => speakWord(target.word_en)}
+        className="inline-flex items-center gap-1 text-sky-600 bg-white border border-sky-200 text-xs font-bold px-3 py-1 rounded-full cursor-pointer hover:bg-sky-100 mb-5"
+      >
+        <Volume2 className="w-3.5 h-3.5" /> Ouvir som
+      </button>
+
+      <div className="flex justify-around items-center my-4">
+        {options.map((opt) => {
+          const isPopped = poppedId === opt.id;
+          const isCorrect = opt.id === target.id;
+
+          return (
+            <button
+              key={opt.id}
+              onClick={() => handlePop(opt)}
+              className={`w-24 h-32 rounded-full border-4 shadow-md flex flex-col items-center justify-center transition-all cursor-pointer ${
+                isPopped
+                  ? isCorrect
+                    ? 'scale-110 bg-emerald-200 border-emerald-400 rotate-6'
+                    : 'opacity-40 border-rose-300 bg-rose-50'
+                  : 'bg-white hover:scale-105 border-sky-300 animate-bounce'
+              }`}
+              style={{ animationDuration: '2.5s' }}
+            >
+              <WordVisual word={opt} size="md" />
+              <span className="text-xs font-bold text-slate-600 mt-1">{opt.word_pt}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ==================== PASSOS 1, 2 E 4 ==================== */
+function Step1Flashcards({ words, onComplete }: { words: Word[]; onComplete: () => void }) {
+  const [idx, setIdx] = useState(0);
+  const word = words[idx] || { word_en: 'HELLO', word_pt: 'Olá', emoji: '👋', phonetic: '(hé-lou)' };
+  const isLast = idx >= words.length - 1;
+
+  return (
+    <div className="text-center py-4 max-w-2xl mx-auto w-full">
+      <h3 className="text-2xl font-extrabold text-slate-800 mb-1">🔊 Flashcards & Pronúncia</h3>
+      <p className="text-slate-400 text-base mb-8">Toca para ouvir o áudio e repete bem alto!</p>
+
+      <div className="flex justify-center mb-6">
+        <WordVisual word={word} size="xl" />
+      </div>
+      <h2 className="text-5xl md:text-6xl font-black text-slate-800 tracking-wide mb-2">{word.word_en}</h2>
+      <p className="text-2xl text-indigo-600 font-bold mb-1">{word.word_pt}</p>
+      <p className="text-slate-400 font-medium text-base mb-8">{formatFriendlyPhonetic(word.phonetic)}</p>
+
+      <button
+        onClick={() => speakWord(word.word_en)}
+        className="bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white rounded-full w-20 h-20 flex items-center justify-center shadow-lg mx-auto mb-8 transition-all cursor-pointer"
+      >
+        <Volume2 className="w-10 h-10" />
+      </button>
+
+      <button
+        onClick={() => (isLast ? onComplete() : setIdx((i) => i + 1))}
+        className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-10 py-4 rounded-2xl shadow-md active:scale-95 transition-all inline-flex items-center gap-2 cursor-pointer text-base"
+      >
+        <span>{isLast ? 'Concluir Passo 1' : 'Próxima Palavra'}</span>
+        <ChevronRight className="w-6 h-6" />
+      </button>
+    </div>
+  );
+}
+
+function Step2Offline({ words, onComplete }: { words: Word[]; onComplete: () => void }) {
+  const drawWords = words.slice(0, 3);
+  return (
+    <div className="text-center py-4 max-w-3xl mx-auto w-full">
+      <h3 className="text-2xl font-extrabold text-slate-800 mb-1">✏️ Hora do Caderno</h3>
+      <p className="text-slate-400 text-base mb-6">Pega no teu caderno e no lápis de cor!</p>
+
+      <div className="bg-amber-50 rounded-3xl p-6 md:p-8 mb-6 text-left border border-amber-200">
+        <p className="font-extrabold text-amber-800 text-lg mb-4 flex items-center gap-2">
+          <Pencil className="w-6 h-6" /> Missão no caderno:
+        </p>
+        <div className="flex justify-around gap-4 my-4 bg-white/90 p-5 rounded-2xl shadow-xs">
+          {drawWords.map((w) => (
+            <div key={w.id} className="text-center">
+              <div className="flex justify-center mb-2">
+                <WordVisual word={w} size="md" />
+              </div>
+              <p className="font-black text-slate-800 text-base">{w.word_en}</p>
+              <p className="text-xs text-slate-500 font-semibold">{w.word_pt}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <button
+        onClick={onComplete}
+        className="bg-amber-500 hover:bg-amber-600 text-white font-bold px-10 py-4 rounded-2xl shadow-md active:scale-95 transition-all inline-flex items-center gap-2 cursor-pointer text-base"
+      >
+        <Check className="w-6 h-6" /> Já desenhei no caderno!
+      </button>
+    </div>
+  );
+}
+
+function Step4RealChallenge({ words, onShowPin }: { words: Word[]; onShowPin: () => void }) {
+  const challengeWords = words.slice(0, 3);
+  return (
+    <div className="text-center py-4 max-w-2xl mx-auto w-full">
+      <h3 className="text-2xl font-extrabold text-slate-800 mb-1">🏆 Desafio Real</h3>
+      <p className="text-slate-400 text-base mb-6">Fala estas palavras em inglês para os teus pais!</p>
+      <div className="bg-rose-50 rounded-3xl p-6 mb-6 border border-rose-200">
+        <div className="flex justify-around gap-4 bg-white/90 p-4 rounded-2xl max-w-md mx-auto shadow-xs">
+          {challengeWords.map((w) => (
+            <div key={w.id} className="text-center">
+              <div className="flex justify-center mb-1">
+                <WordVisual word={w} size="sm" />
+              </div>
+              <p className="font-black text-slate-800 text-base">{w.word_en}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+      <button
+        onClick={onShowPin}
+        className="bg-rose-500 hover:bg-rose-600 text-white font-bold px-10 py-4 rounded-2xl shadow-lg cursor-pointer text-base"
+      >
+        <Lock className="w-6 h-6 inline mr-2" />
+        Pedir confirmação dos pais (PIN)
+      </button>
     </div>
   );
 }
@@ -453,7 +1136,7 @@ function WeeklyExamRunner({
   const [examFinished, setExamFinished] = useState(false);
 
   useEffect(() => {
-    if (!words || words.length < 5) return;
+    if (!words || words.length < 3) return;
 
     const shuffled = [...words].sort(() => Math.random() - 0.5);
 
@@ -462,17 +1145,15 @@ function WeeklyExamRunner({
     );
 
     let spellingWords: Word[] = [];
-    if (eligibleForSpelling.length >= 3) {
+    if (eligibleForSpelling.length >= 2) {
       spellingWords = eligibleForSpelling.slice(0, 3);
     }
 
     const remainingWords = shuffled.filter((w) => !spellingWords.some((sw) => sw.id === w.id));
 
-    const listeningCount = spellingWords.length > 0 ? 4 : 5;
-    const soundMatchCount = spellingWords.length > 0 ? 3 : 5;
-
+    const listeningCount = Math.min(4, Math.max(1, Math.floor(remainingWords.length / 2)));
     const listeningWords = remainingWords.slice(0, listeningCount);
-    const soundMatchWords = remainingWords.slice(listeningCount, listeningCount + soundMatchCount);
+    const soundMatchWords = remainingWords.slice(listeningCount);
 
     const generated: ExamQuestion[] = [];
     let qId = 1;
@@ -609,7 +1290,7 @@ function WeeklyExamRunner({
 
   if (examFinished) {
     const finalStars = score * 5;
-    const percentage = Math.round((score / totalQuestions) * 100);
+    const percentage = totalQuestions > 0 ? Math.round((score / totalQuestions) * 100) : 100;
     const passed = percentage >= 60;
 
     return (
@@ -784,7 +1465,7 @@ function WeeklyExamRunner({
               <div className="flex justify-center gap-2 my-5 min-h-[48px] flex-wrap">
                 {Array.from({ length: targetCleanLength }).map((_, i) => {
                   const letterIdx = selectedLetterIndices[i];
-                  const char = (letterIdx !== undefined && q.scrambledLetters && q.scrambledLetters[letterIdx])
+                  const char = letterIdx !== undefined && q.scrambledLetters && q.scrambledLetters[letterIdx]
                     ? q.scrambledLetters[letterIdx]?.char
                     : '';
 
@@ -892,695 +1573,7 @@ function WeeklyExamRunner({
             </div>
           </>
         )}
-
       </div>
-    </div>
-  );
-}
-
-/* ==================== COMPONENTES REGULARES (AULAS 1 A 5) ==================== */
-function Step1Flashcards({ words, onComplete }: { words: Word[]; onComplete: () => void }) {
-  const [idx, setIdx] = useState(0);
-  const word = words[idx] || { word_en: 'HELLO', word_pt: 'Olá', emoji: '👋', phonetic: '(hé-lou)' };
-  const isLast = idx >= words.length - 1;
-
-  return (
-    <div className="text-center py-4 max-w-2xl mx-auto w-full">
-      <h3 className="text-2xl font-extrabold text-slate-800 mb-1">🔊 Flashcards & Pronúncia</h3>
-      <p className="text-slate-400 text-base mb-8">Toca para ouvir o áudio e repete bem alto!</p>
-
-      <div className="flex justify-center mb-6">
-        <WordVisual word={word} size="xl" />
-      </div>
-      <h2 className="text-5xl md:text-6xl font-black text-slate-800 tracking-wide mb-2">{word.word_en}</h2>
-      <p className="text-2xl text-indigo-600 font-bold mb-1">{word.word_pt}</p>
-      <p className="text-slate-400 font-medium text-base mb-8">{formatFriendlyPhonetic(word.phonetic)}</p>
-
-      <button
-        onClick={() => speakWord(word.word_en)}
-        className="bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white rounded-full w-20 h-20 flex items-center justify-center shadow-lg mx-auto mb-8 transition-all cursor-pointer"
-      >
-        <Volume2 className="w-10 h-10" />
-      </button>
-
-      <button
-        onClick={() => (isLast ? onComplete() : setIdx((i) => i + 1))}
-        className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-10 py-4 rounded-2xl shadow-md active:scale-95 transition-all inline-flex items-center gap-2 cursor-pointer text-base"
-      >
-        <span>{isLast ? 'Concluir Passo 1' : 'Próxima Palavra'}</span>
-        <ChevronRight className="w-6 h-6" />
-      </button>
-    </div>
-  );
-}
-
-function Step2Offline({ words, onComplete }: { words: Word[]; onComplete: () => void }) {
-  const drawWords = words.slice(0, 3);
-  return (
-    <div className="text-center py-4 max-w-3xl mx-auto w-full">
-      <h3 className="text-2xl font-extrabold text-slate-800 mb-1">✏️ Hora do Caderno</h3>
-      <p className="text-slate-400 text-base mb-6">Pega no teu caderno e no lápis de cor!</p>
-
-      <div className="bg-amber-50 rounded-3xl p-6 md:p-8 mb-6 text-left border border-amber-200">
-        <p className="font-extrabold text-amber-800 text-lg mb-4 flex items-center gap-2">
-          <Pencil className="w-6 h-6" /> Missão no caderno:
-        </p>
-        <div className="flex justify-around gap-4 my-4 bg-white/90 p-5 rounded-2xl shadow-xs">
-          {drawWords.map((w) => (
-            <div key={w.id} className="text-center">
-              <div className="flex justify-center mb-2">
-                <WordVisual word={w} size="md" />
-              </div>
-              <p className="font-black text-slate-800 text-base">{w.word_en}</p>
-              <p className="text-xs text-slate-500 font-semibold">{w.word_pt}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <button
-        onClick={onComplete}
-        className="bg-amber-500 hover:bg-amber-600 text-white font-bold px-10 py-4 rounded-2xl shadow-md active:scale-95 transition-all inline-flex items-center gap-2 cursor-pointer text-base"
-      >
-        <Check className="w-6 h-6" /> Já desenhei no caderno!
-      </button>
-    </div>
-  );
-}
-
-/* ==================== PASSO 3: CIRCUITO DE 4 MINIJOGOS (ORDEM ALEATÓRIA) ==================== */
-function Step3MiniGames({ words, onComplete }: { words: Word[]; onComplete: () => void }) {
-  const [currentGame, setCurrentGame] = useState<1 | 2 | 3 | 4>(1);
-  const [game1Done, setGame1Done] = useState(false);
-  const [game2Done, setGame2Done] = useState(false);
-  const [game3Done, setGame3Done] = useState(false);
-  const [game4Done, setGame4Done] = useState(false);
-
-  // Guarda e embaralha as palavras especificamente para os minijogos
-  const [shuffledPool, setShuffledPool] = useState<Word[]>([]);
-
-  // Função auxiliar para criar uma lista embaralhada sem mutar o original
-  const getShuffledWords = (list: Word[]) => [...list].sort(() => Math.random() - 0.5);
-
-  useEffect(() => {
-    if (words.length > 0) {
-      setShuffledPool(getShuffledWords(words));
-    }
-  }, [words]);
-
-  const activeWords = shuffledPool.length > 0 ? shuffledPool : words;
-
-  if (activeWords.length === 0) {
-    return (
-      <div className="text-center py-8">
-        <p className="text-slate-400 font-bold mb-4">Sem palavras cadastradas para esta aula.</p>
-        <button
-          onClick={onComplete}
-          className="bg-indigo-600 text-white font-bold px-8 py-3 rounded-2xl cursor-pointer"
-        >
-          Avançar
-        </button>
-      </div>
-    );
-  }
-
-  if (game1Done && game2Done && game3Done && game4Done) {
-    return (
-      <div className="text-center py-6 max-w-md mx-auto">
-        <div className="text-7xl mb-3 animate-bounce">🏆</div>
-        <h3 className="text-2xl font-black text-slate-800 mb-1">Circuito Concluído!</h3>
-        <p className="text-slate-500 font-semibold text-sm mb-6">
-          Você superou todos os 4 minijogos com sucesso!
-        </p>
-        <button
-          onClick={onComplete}
-          className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold py-4 px-8 rounded-2xl shadow-lg hover:scale-102 active:scale-95 transition-all cursor-pointer text-base"
-        >
-          Avançar para o Desafio com os Pais ➔
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="w-full max-w-2xl mx-auto py-2">
-      <div className="flex items-center justify-center gap-1.5 md:gap-2 mb-6 flex-wrap">
-        <span
-          className={`px-3 py-1 rounded-full text-xs font-black ${
-            currentGame === 1
-              ? 'bg-indigo-600 text-white'
-              : game1Done
-              ? 'bg-emerald-100 text-emerald-700'
-              : 'bg-slate-100 text-slate-400'
-          }`}
-        >
-          {game1Done ? '✔ 1. Escuta' : '1. Escuta'}
-        </span>
-        <span className="text-slate-300 font-bold">➔</span>
-        <span
-          className={`px-3 py-1 rounded-full text-xs font-black ${
-            currentGame === 2
-              ? 'bg-purple-600 text-white'
-              : game2Done
-              ? 'bg-emerald-100 text-emerald-700'
-              : 'bg-slate-100 text-slate-400'
-          }`}
-        >
-          {game2Done ? '✔ 2. Memória' : '2. Memória'}
-        </span>
-        <span className="text-slate-300 font-bold">➔</span>
-        <span
-          className={`px-3 py-1 rounded-full text-xs font-black ${
-            currentGame === 3
-              ? 'bg-amber-600 text-white'
-              : game3Done
-              ? 'bg-emerald-100 text-emerald-700'
-              : 'bg-slate-100 text-slate-400'
-          }`}
-        >
-          {game3Done ? '✔ 3. Escrever' : '3. Escrever'}
-        </span>
-        <span className="text-slate-300 font-bold">➔</span>
-        <span
-          className={`px-3 py-1 rounded-full text-xs font-black ${
-            currentGame === 4
-              ? 'bg-sky-600 text-white'
-              : game4Done
-              ? 'bg-emerald-100 text-emerald-700'
-              : 'bg-slate-100 text-slate-400'
-          }`}
-        >
-          {game4Done ? '✔ 4. Balões' : '4. Balões'}
-        </span>
-      </div>
-
-      {currentGame === 1 && (
-        <SubGameListening
-          key="subgame-1"
-          words={getShuffledWords(activeWords).slice(0, 4)}
-          onFinish={() => {
-            setGame1Done(true);
-            setCurrentGame(2);
-            playSuccessSound();
-          }}
-        />
-      )}
-
-      {currentGame === 2 && (
-        <SubGameMemory
-          key="subgame-2"
-          words={getShuffledWords(activeWords).slice(0, activeWords.length >= 6 ? 6 : activeWords.length)}
-          onFinish={() => {
-            setGame2Done(true);
-            setCurrentGame(3);
-            playSuccessSound();
-          }}
-        />
-      )}
-
-      {currentGame === 3 && (
-        <SubGameSpelling
-          key="subgame-3"
-          words={getShuffledWords(activeWords).slice(0, 3)}
-          onFinish={() => {
-            setGame3Done(true);
-            setCurrentGame(4);
-            playSuccessSound();
-          }}
-        />
-      )}
-
-      {currentGame === 4 && (
-        <SubGameBalloon
-          key="subgame-4"
-          words={getShuffledWords(activeWords).slice(0, 4)}
-          onFinish={() => {
-            setGame4Done(true);
-            playSuccessSound();
-            celebrate();
-          }}
-        />
-      )}
-    </div>
-  );
-}
-
-/* ==================== SUB-JOGO 1: ESCUTA E ENCONTRA (SEM LOOPING) ==================== */
-function SubGameListening({ words, onFinish }: { words: Word[]; onFinish: () => void }) {
-  const [round, setRound] = useState(0);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [answered, setAnswered] = useState(false);
-  const [options, setOptions] = useState<Word[]>([]);
-  const isTransitioning = useRef(false);
-
-  const target = words[round];
-
-  useEffect(() => {
-    if (!target) {
-      onFinish();
-      return;
-    }
-    const wrong = words
-      .filter((w) => w.id !== target.id)
-      .sort(() => Math.random() - 0.5)
-      .slice(0, 3);
-
-    setOptions([target, ...wrong].sort(() => Math.random() - 0.5));
-    setSelectedId(null);
-    setAnswered(false);
-    isTransitioning.current = false;
-
-    const timer = setTimeout(() => speakWord(target.word_en), 250);
-    return () => clearTimeout(timer);
-  }, [round, target?.id]); // Dependência pontual pelo ID para não disparar re-renders desnecessários
-
-  const handlePick = (w: Word) => {
-    if (answered || isTransitioning.current) return;
-    isTransitioning.current = true;
-    setSelectedId(w.id);
-    setAnswered(true);
-
-    if (w.id === target.id) {
-      playSuccessSound();
-    }
-
-    setTimeout(() => {
-      setRound((prevRound) => {
-        const next = prevRound + 1;
-        if (next < words.length) {
-          return next;
-        } else {
-          onFinish();
-          return prevRound;
-        }
-      });
-    }, 1000);
-  };
-
-  if (!target) return null;
-
-  return (
-    <div className="bg-indigo-50/60 border-2 border-indigo-100 rounded-3xl p-6 text-center">
-      <span className="text-xs font-bold text-indigo-700 uppercase tracking-widest">
-        Fase 1 • Escuta & Figura ({round + 1}/{words.length})
-      </span>
-
-      <button
-        onClick={() => speakWord(target.word_en)}
-        className="w-20 h-20 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full flex items-center justify-center shadow-lg mx-auto my-4 active:scale-95 transition-all cursor-pointer"
-      >
-        <Volume2 className="w-10 h-10" />
-      </button>
-
-      <h4 className="text-xl font-black text-slate-700 mb-5">"{target.word_en}"</h4>
-
-      <div className="grid grid-cols-2 gap-3.5">
-        {options.map((opt) => {
-          const isCorrect = opt.id === target.id;
-          const isSelected = selectedId === opt.id;
-          let btnStyle = 'border-slate-200 bg-white hover:border-indigo-400 text-slate-800';
-
-          if (answered) {
-            if (isCorrect) btnStyle = 'border-emerald-500 bg-emerald-50 text-emerald-800 shadow-sm';
-            else if (isSelected) btnStyle = 'border-rose-400 bg-rose-50 text-rose-700 opacity-60';
-            else btnStyle = 'border-slate-100 bg-slate-50 text-slate-300 opacity-30';
-          }
-
-          return (
-            <button
-              key={opt.id}
-              onClick={() => handlePick(opt)}
-              disabled={answered}
-              className={`p-4 rounded-2xl border-2 font-bold transition-all cursor-pointer flex flex-col items-center justify-center gap-1 shadow-xs active:scale-95 ${btnStyle}`}
-            >
-              <WordVisual word={opt} size="md" />
-              <span className="text-xs font-extrabold mt-1">{opt.word_pt}</span>
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-/* ==================== SUB-JOGO 2: SUPER MEMÓRIA ==================== */
-function SubGameMemory({ words, onFinish }: { words: Word[]; onFinish: () => void }) {
-  type Card = { uid: string; word: Word; flipped: boolean; matched: boolean };
-  const [cards, setCards] = useState<Card[]>([]);
-
-  useEffect(() => {
-    const deck: Card[] = [];
-    words.forEach((w) => {
-      deck.push({ uid: `${w.id}-1`, word: w, flipped: false, matched: false });
-      deck.push({ uid: `${w.id}-2`, word: w, flipped: false, matched: false });
-    });
-    setCards(deck.sort(() => Math.random() - 0.5));
-  }, [words]);
-
-  const handleCardClick = (card: Card) => {
-    if (card.flipped || card.matched) return;
-    const flipped = cards.filter((c) => c.flipped && !c.matched);
-    if (flipped.length >= 2) return;
-
-    speakWord(card.word.word_en);
-    const updated = cards.map((c) => (c.uid === card.uid ? { ...c, flipped: true } : c));
-    setCards(updated);
-
-    if (flipped.length === 1) {
-      const first = flipped[0];
-      if (first.word.id === card.word.id) {
-        setTimeout(() => {
-          setCards((prev) => {
-            const next = prev.map((c) => (c.word.id === card.word.id ? { ...c, matched: true } : c));
-            if (next.every((c) => c.matched)) {
-              setTimeout(onFinish, 600);
-            }
-            return next;
-          });
-        }, 400);
-      } else {
-        setTimeout(() => {
-          setCards((prev) => prev.map((c) => (c.matched ? c : { ...c, flipped: false })));
-        }, 800);
-      }
-    }
-  };
-
-  return (
-    <div className="bg-purple-50/70 border-2 border-purple-100 rounded-3xl p-5 md:p-8 text-center max-w-lg mx-auto shadow-xs">
-      <span className="text-xs font-black text-purple-700 bg-purple-100 px-3 py-1 rounded-full uppercase tracking-wider">
-        Fase 2 • Super Memória ({cards.length / 2} pares)
-      </span>
-      <p className="text-xs font-bold text-slate-400 mt-2 mb-6">
-        Encontre os pares das palavras de hoje!
-      </p>
-
-      <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 sm:gap-4 w-full">
-        {cards.map((c) => (
-          <button
-            key={c.uid}
-            onClick={() => handleCardClick(c)}
-            className={`w-full aspect-square rounded-2xl sm:rounded-3xl border-2 flex flex-col items-center justify-center p-2 transition-all duration-200 cursor-pointer ${
-              c.flipped || c.matched
-                ? 'bg-white border-purple-400 shadow-md scale-102 ring-2 ring-purple-100'
-                : 'bg-gradient-to-br from-purple-500 via-indigo-500 to-indigo-600 border-purple-300 shadow-sm hover:shadow-md hover:scale-103 active:scale-95 text-white'
-            }`}
-          >
-            {c.flipped || c.matched ? (
-              <div className="flex flex-col items-center justify-center h-full w-full">
-                <WordVisual word={c.word} size="md" />
-                <span className="text-[11px] sm:text-xs font-black text-slate-800 mt-1.5 truncate max-w-full px-1">
-                  {c.word.word_en}
-                </span>
-              </div>
-            ) : (
-              <div className="flex items-center justify-center h-full w-full select-none">
-                <span className="text-2xl sm:text-3xl font-black text-white/90 drop-shadow-xs">
-                  ❓
-                </span>
-              </div>
-            )}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/* ==================== SUB-JOGO 3: OUVE & ESCREVE ==================== */
-function SubGameSpelling({ words, onFinish }: { words: Word[]; onFinish: () => void }) {
-  const [round, setRound] = useState(0);
-  const [pickedIndices, setPickedIndices] = useState<number[]>([]);
-  const [scramble, setScramble] = useState<{ id: number; char: string }[]>([]);
-  const [feedback, setFeedback] = useState<'idle' | 'success' | 'error'>('idle');
-  const lastSpokenRound = useRef<number>(-1);
-
-  const target = words[round];
-  const targetClean = target ? target.word_en.toUpperCase().replace(/[^A-Z]/g, '') : '';
-
-  useEffect(() => {
-    if (!target) return;
-    const chars = targetClean.split('').map((char, index) => ({ id: index, char }));
-    setScramble(chars.sort(() => Math.random() - 0.5));
-    setPickedIndices([]);
-    setFeedback('idle');
-
-    if (lastSpokenRound.current !== round) {
-      lastSpokenRound.current = round;
-      speakWord(target.word_en);
-    }
-  }, [round, target, targetClean]);
-
-  const handlePickLetter = (idx: number) => {
-    if (pickedIndices.includes(idx) || feedback === 'success') return;
-    setPickedIndices((prev) => [...prev, idx]);
-  };
-
-  const handleRemoveLetter = () => {
-    if (pickedIndices.length === 0 || feedback === 'success') return;
-    setPickedIndices((prev) => prev.slice(0, -1));
-  };
-
-  const handleCheckSpelling = () => {
-    const currentWord = pickedIndices
-      .map((i) => scramble[i]?.char || '')
-      .join('');
-
-    if (currentWord === targetClean) {
-      setFeedback('success');
-      playSuccessSound();
-      setTimeout(() => {
-        if (round < words.length - 1) {
-          setRound((r) => r + 1);
-        } else {
-          onFinish();
-        }
-      }, 1000);
-    } else {
-      setFeedback('error');
-      setTimeout(() => {
-        setPickedIndices([]);
-        setFeedback('idle');
-      }, 800);
-    }
-  };
-
-  if (!target) return null;
-
-  return (
-    <div className="bg-amber-50/70 border-2 border-amber-200 rounded-3xl p-6 text-center max-w-lg mx-auto shadow-xs">
-      <span className="text-xs font-black text-amber-800 bg-amber-200/80 px-3 py-1 rounded-full uppercase tracking-wider">
-        Fase 3 • Ouve & Escreve em Inglês ({round + 1}/{words.length})
-      </span>
-
-      <div className="my-4">
-        <button
-          onClick={() => speakWord(target.word_en)}
-          className="w-18 h-18 bg-amber-500 hover:bg-amber-600 text-white rounded-full flex items-center justify-center shadow-lg mx-auto active:scale-95 transition-all cursor-pointer"
-        >
-          <Volume2 className="w-9 h-9" />
-        </button>
-        <div className="flex items-center justify-center gap-2 mt-2.5">
-          <p className="text-xs text-slate-500 font-bold">
-            Significado em português: <strong className="text-slate-800">{target.word_pt}</strong>
-          </p>
-          <WordVisual word={target} size="sm" />
-        </div>
-      </div>
-
-      <div className="flex justify-center gap-2 sm:gap-2.5 my-6 flex-wrap">
-        {Array.from({ length: targetClean.length }).map((_, i) => {
-          const letterIdx = pickedIndices[i];
-          const char = (letterIdx !== undefined && scramble[letterIdx]) ? scramble[letterIdx]?.char : '';
-
-          return (
-            <div
-              key={i}
-              onClick={i === pickedIndices.length - 1 ? handleRemoveLetter : undefined}
-              className={`w-12 h-12 sm:w-14 sm:h-14 rounded-2xl border-2 flex items-center justify-center font-black text-xl sm:text-2xl transition-all ${
-                char
-                  ? feedback === 'success'
-                    ? 'border-emerald-500 bg-emerald-100 text-emerald-800 shadow-sm'
-                    : feedback === 'error'
-                    ? 'border-rose-400 bg-rose-100 text-rose-800 shadow-sm'
-                    : 'border-amber-500 bg-white text-amber-800 shadow-xs cursor-pointer hover:border-rose-400'
-                  : 'border-dashed border-slate-300 bg-white/60'
-              }`}
-            >
-              {char}
-            </div>
-          );
-        })}
-      </div>
-
-      <div className="flex justify-center gap-2 sm:gap-2.5 flex-wrap mb-6">
-        {scramble.map((item, idx) => {
-          const isUsed = pickedIndices.includes(idx);
-          return (
-            <button
-              key={item?.id ?? idx}
-              onClick={() => handlePickLetter(idx)}
-              disabled={isUsed || feedback === 'success'}
-              className={`w-12 h-12 sm:w-14 sm:h-14 rounded-2xl font-black text-lg sm:text-xl border-2 transition-all duration-150 ${
-                isUsed
-                  ? 'border-slate-100 bg-slate-100 text-slate-300 opacity-40 cursor-not-allowed'
-                  : 'border-amber-300 bg-white text-amber-900 shadow-sm hover:border-amber-500 hover:scale-105 active:scale-95 cursor-pointer'
-              }`}
-            >
-              {item?.char || ''}
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="flex items-center justify-center gap-3">
-        <button
-          type="button"
-          onClick={handleRemoveLetter}
-          disabled={pickedIndices.length === 0 || feedback === 'success'}
-          className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 font-bold text-xs cursor-pointer transition-all disabled:opacity-40"
-        >
-          ⌫ Apagar
-        </button>
-        <button
-          type="button"
-          onClick={handleCheckSpelling}
-          disabled={pickedIndices.length !== targetClean.length || feedback === 'success'}
-          className={`px-6 py-2.5 rounded-xl font-black text-xs transition-all shadow-sm ${
-            pickedIndices.length === targetClean.length && feedback !== 'success'
-              ? 'bg-amber-600 hover:bg-amber-700 text-white cursor-pointer active:scale-95'
-              : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-          }`}
-        >
-          Conferir Palavra ✔
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/* ==================== SUB-JOGO 4: BALÃO MÁGICO (SEM LOOPING) ==================== */
-function SubGameBalloon({ words, onFinish }: { words: Word[]; onFinish: () => void }) {
-  const [round, setRound] = useState(0);
-  const [poppedId, setPoppedId] = useState<string | null>(null);
-  const [options, setOptions] = useState<Word[]>([]);
-  const isTransitioning = useRef(false);
-
-  const target = words[round];
-
-  useEffect(() => {
-    if (!target) {
-      onFinish();
-      return;
-    }
-    const wrong = words
-      .filter((w) => w.id !== target.id)
-      .sort(() => Math.random() - 0.5)
-      .slice(0, 2);
-
-    setOptions([target, ...wrong].sort(() => Math.random() - 0.5));
-    setPoppedId(null);
-    isTransitioning.current = false;
-
-    const timer = setTimeout(() => speakWord(target.word_en), 250);
-    return () => clearTimeout(timer);
-  }, [round, target?.id]);
-
-  const handlePop = (item: Word) => {
-    if (poppedId || isTransitioning.current) return;
-    setPoppedId(item.id);
-
-    if (item.id === target.id) {
-      isTransitioning.current = true;
-      playSuccessSound();
-      setTimeout(() => {
-        setRound((prevRound) => {
-          const next = prevRound + 1;
-          if (next < words.length) {
-            return next;
-          } else {
-            onFinish();
-            return prevRound;
-          }
-        });
-      }, 700);
-    } else {
-      setTimeout(() => setPoppedId(null), 600);
-    }
-  };
-
-  if (!target) return null;
-
-  return (
-    <div className="bg-sky-50/60 border-2 border-sky-100 rounded-3xl p-6 text-center">
-      <span className="text-xs font-bold text-sky-700 uppercase tracking-widest">
-        Fase 4 • Estoure o Balão ({round + 1}/{words.length})
-      </span>
-
-      <h4 className="text-lg font-black text-slate-800 mt-3 mb-1">
-        Qual é o balão de: <span className="text-sky-600">"{target.word_en}"</span>?
-      </h4>
-
-      <button
-        onClick={() => speakWord(target.word_en)}
-        className="inline-flex items-center gap-1 text-sky-600 bg-white border border-sky-200 text-xs font-bold px-3 py-1 rounded-full cursor-pointer hover:bg-sky-100 mb-5"
-      >
-        <Volume2 className="w-3.5 h-3.5" /> Ouvir som
-      </button>
-
-      <div className="flex justify-around items-center my-4">
-        {options.map((opt) => {
-          const isPopped = poppedId === opt.id;
-          const isCorrect = opt.id === target.id;
-
-          return (
-            <button
-              key={opt.id}
-              onClick={() => handlePop(opt)}
-              className={`w-24 h-32 rounded-full border-4 shadow-md flex flex-col items-center justify-center transition-all cursor-pointer ${
-                isPopped
-                  ? isCorrect
-                    ? 'scale-110 bg-emerald-200 border-emerald-400 rotate-6'
-                    : 'opacity-40 border-rose-300 bg-rose-50'
-                  : 'bg-white hover:scale-105 border-sky-300 animate-bounce'
-              }`}
-              style={{ animationDuration: '2.5s' }}
-            >
-              <WordVisual word={opt} size="md" />
-              <span className="text-xs font-bold text-slate-600 mt-1">{opt.word_pt}</span>
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function Step4RealChallenge({ words, onShowPin }: { words: Word[]; onShowPin: () => void }) {
-  const challengeWords = words.slice(0, 3);
-  return (
-    <div className="text-center py-4 max-w-2xl mx-auto w-full">
-      <h3 className="text-2xl font-extrabold text-slate-800 mb-1">🏆 Desafio Real</h3>
-      <p className="text-slate-400 text-base mb-6">Fala estas palavras em inglês para os teus pais!</p>
-      <div className="bg-rose-50 rounded-3xl p-6 mb-6 border border-rose-200">
-        <div className="flex justify-around gap-4 bg-white/90 p-4 rounded-2xl max-w-md mx-auto shadow-xs">
-          {challengeWords.map((w) => (
-            <div key={w.id} className="text-center">
-              <div className="flex justify-center mb-1">
-                <WordVisual word={w} size="sm" />
-              </div>
-              <p className="font-black text-slate-800 text-base">{w.word_en}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-      <button
-        onClick={onShowPin}
-        className="bg-rose-500 hover:bg-rose-600 text-white font-bold px-10 py-4 rounded-2xl shadow-lg cursor-pointer text-base"
-      >
-        <Lock className="w-6 h-6 inline mr-2" />
-        Pedir confirmação dos pais (PIN)
-      </button>
     </div>
   );
 }
