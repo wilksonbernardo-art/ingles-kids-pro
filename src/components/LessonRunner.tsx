@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { ArrowLeft, Volume2, Check, Lock, Star, Pencil, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Volume2, Check, Lock, Star, Pencil, ChevronRight, Search } from 'lucide-react';
 import type { Module, Word, LessonProgress } from '@/lib/supabase';
 import { supabase, LESSON_STEPS } from '@/lib/supabase';
 import { speakWord, playSuccessSound, playErrorSound } from '@/lib/speech';
@@ -22,6 +22,55 @@ function formatFriendlyPhonetic(phonetic?: string | null): string {
     .replace(/ə/g, 'e')
     .replace(/ɪ/g, 'i')
     .replace(/ʊ/g, 'u');
+}
+
+// Banco de frases contextuais específicas para cada palavra
+const CONTEXT_SENTENCES: Record<string, string> = {
+  // Brinquedos / Games / Módulo 3
+  ball: 'No jogo de futebol, chutamos a _____ para fazer o gol.',
+  doll: 'A menina gosta de pentear o cabelo da sua _____.',
+  car: 'Na pista de corrida, acelero rápido o meu _____.',
+  puzzle: 'Para montar este desenho, juntei todas as peças do _____.',
+  kite: 'Em dia de vento, adoro soltar no céu a minha _____.',
+  bike: 'Coloquei o capacete para pedalar na minha _____.',
+  teddy: 'Para dormir abraçado e macio, pego o meu _____.',
+  train: 'O apito faz piuí quando passa o grande _____.',
+  boat: 'Para navegar no lago calmo, coloquei na água o meu _____.',
+  robot: 'Apertei o botão e acendeu as luzes do meu _____.',
+  blocks: 'Para construir um castelo alto, empilhei os _____.',
+  drum: 'Bati com as baquetas bem forte no meu _____.',
+  game: 'No videogame da sala, joguei uma partida de _____ com meus amigos.',
+  slide: 'No parquinho da pracinha, subi a escada e escorreguei no _____.',
+  swing: 'Segurei firme na corda para ir bem alto no _____.',
+  seesaw: 'Para brincar na gangorra, um sobe e o outro desce no _____.',
+  sandpit: 'Com o baldinho e a pazinha, fiz castelos no _____.',
+
+  // Primeiros passos / Casa / Comida / Natureza
+  milk: 'Pela manhã no café, bebo no copo um pouco de _____.',
+  water: 'Quando sinto muita sede no calor, bebo bastante _____.',
+  bread: 'Para fazer um sanduíche gostoso, passei manteiga no _____.',
+  apple: 'A fruta vermelha e docinha que mordi é a _____.',
+  banana: 'O macaquinho descascou e comeu uma gostosa _____.',
+  cat: 'O bichinho que mia no telhado é o _____.',
+  dog: 'O animalzinho que late e abana o rabo é o _____.',
+  sun: 'O dia fica bem quentinho e iluminado com o brilho do _____.',
+  tree: 'No meio do parque, os passarinhos cantam no galho da _____.',
+  flower: 'Plantei no jardim uma cheirosa e colorida _____.',
+  bed: 'Quando bate o sono à noite, deito para descansar na minha _____.',
+  house: 'A família inteira mora reunida em uma linda _____.',
+  book: 'Antes de dormir, abri e li uma historinha no meu _____.',
+  shoe: 'Antes de sair de casa, calcei no meu pé o _____.',
+  shirt: 'Para ir à escola bem arrumado, vesti a minha _____.',
+};
+
+// Gera frase específica e contextual para qualquer palavra
+function getContextSentence(word: Word): string {
+  const key = word.word_en.trim().toLowerCase();
+  if (CONTEXT_SENTENCES[key]) {
+    return CONTEXT_SENTENCES[key];
+  }
+  // Frase inteligente caso a palavra não esteja no dicionário manual
+  return `No dia a dia, quando falamos sobre "${word.word_pt.toLowerCase()}", usamos a palavra _____ em inglês.`;
 }
 
 type LessonRunnerProps = {
@@ -1111,8 +1160,127 @@ function Step4RealChallenge({ words, onShowPin }: { words: Word[]; onShowPin: ()
   );
 }
 
+/* ==================== CAÇA-PALAVRAS INTERATIVO TRADICIONAL ==================== */
+function WordSearchBoard({
+  targetWord,
+  onWordFound,
+}: {
+  targetWord: string;
+  onWordFound: () => void;
+}) {
+  const cleanTarget = targetWord.toUpperCase().replace(/[^A-Z]/g, '');
+  const [selectedCoords, setSelectedCoords] = useState<{ r: number; c: number }[]>([]);
+  const [gridData, setGridData] = useState<{
+    grid: string[][];
+    targetPositions: { r: number; c: number }[];
+  }>({ grid: [], targetPositions: [] });
+
+  // Gera o grid 6x6 e posiciona a palavra alvo (horizontal ou vertical)
+  useEffect(() => {
+    const size = 6;
+    const g: string[][] = Array.from({ length: size }, () =>
+      Array.from({ length: size }, () =>
+        String.fromCharCode(65 + Math.floor(Math.random() * 26))
+      )
+    );
+
+    const isHorizontal = Math.random() > 0.5;
+    const len = cleanTarget.length;
+    let targetPositions: { r: number; c: number }[] = [];
+
+    if (isHorizontal) {
+      const r = Math.floor(Math.random() * size);
+      const startC = Math.floor(Math.random() * (size - len + 1));
+      for (let i = 0; i < len; i++) {
+        g[r][startC + i] = cleanTarget[i];
+        targetPositions.push({ r, c: startC + i });
+      }
+    } else {
+      const c = Math.floor(Math.random() * size);
+      const startR = Math.floor(Math.random() * (size - len + 1));
+      for (let i = 0; i < len; i++) {
+        g[startR + i][c] = cleanTarget[i];
+        targetPositions.push({ r: startR + i, c });
+      }
+    }
+
+    setGridData({ grid: g, targetPositions });
+    setSelectedCoords([]);
+  }, [cleanTarget]);
+
+  const handleCellClick = (r: number, c: number) => {
+    const alreadySelected = selectedCoords.some((pos) => pos.r === r && pos.c === c);
+    let nextCoords: { r: number; c: number }[];
+
+    if (alreadySelected) {
+      nextCoords = selectedCoords.filter((pos) => !(pos.r === r && pos.c === c));
+    } else {
+      nextCoords = [...selectedCoords, { r, c }];
+    }
+
+    setSelectedCoords(nextCoords);
+
+    // Checa se as coordenadas clicadas formam a palavra alvo
+    const currentLetters = nextCoords
+      .map((pos) => gridData.grid[pos.r][pos.c])
+      .join('');
+
+    if (currentLetters === cleanTarget) {
+      onWordFound();
+    }
+  };
+
+  const handleResetLetters = () => {
+    setSelectedCoords([]);
+  };
+
+  const currentConstructedWord = selectedCoords
+    .map((pos) => gridData.grid[pos.r]?.[pos.c] || '')
+    .join('');
+
+  return (
+    <div className="flex flex-col items-center">
+      {/* Grade de Letras 6x6 */}
+      <div className="grid grid-cols-6 gap-2 sm:gap-2.5 p-3 bg-indigo-50/70 border-2 border-indigo-200 rounded-3xl max-w-sm mx-auto shadow-xs">
+        {gridData.grid.map((row, r) =>
+          row.map((char, c) => {
+            const isSelected = selectedCoords.some((pos) => pos.r === r && pos.c === c);
+
+            return (
+              <button
+                key={`${r}-${c}`}
+                onClick={() => handleCellClick(r, c)}
+                className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl font-black text-lg sm:text-xl transition-all flex items-center justify-center cursor-pointer select-none active:scale-95 ${
+                  isSelected
+                    ? 'bg-indigo-600 text-white shadow-md scale-105 border-2 border-indigo-700'
+                    : 'bg-white text-slate-700 border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/50'
+                }`}
+              >
+                {char}
+              </button>
+            );
+          })
+        )}
+      </div>
+
+      {/* Leitor de Letras Formadas */}
+      <div className="flex items-center gap-3 mt-4">
+        <div className="px-4 py-2 bg-slate-100 rounded-xl border border-slate-200 text-slate-700 font-extrabold text-sm min-w-[140px] text-center">
+          Letras: <span className="text-indigo-600">{currentConstructedWord || '...'}</span>
+        </div>
+        <button
+          onClick={handleResetLetters}
+          className="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl font-bold text-xs cursor-pointer active:scale-95"
+        >
+          Limpar
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /* ==================== PROVA AVALIATIVA REFORMULADA (5 FASES • NOTA 0 A 10) ==================== */
-type ExamPhase = 'listening' | 'context' | 'spelling' | 'word_find' | 'match';
+type ExamPhase = 'listening' | 'context' | 'spelling' | 'word_search' | 'match';
 
 interface ExamQuestion {
   id: number;
@@ -1184,7 +1352,7 @@ function WeeklyExamRunner({
         const otherWords = examWords.filter((w) => w.id !== target.id);
 
         if (phaseIndex === 0) {
-          // 1. Escuta pura (Áudio -> Texto em inglês)
+          // 1. Escuta pura (Listening: Áudio -> Texto em inglês)
           const wrong = otherWords
             .sort(() => Math.random() - 0.5)
             .slice(0, 2)
@@ -1196,7 +1364,7 @@ function WeeklyExamRunner({
             options: [target.word_en, ...wrong].sort(() => Math.random() - 0.5),
           });
         } else if (phaseIndex === 1) {
-          // 2. Frase em contexto
+          // 2. Complete a Frase Específica (Com contexto real da palavra)
           const wrong = otherWords
             .sort(() => Math.random() - 0.5)
             .slice(0, 2)
@@ -1205,10 +1373,11 @@ function WeeklyExamRunner({
             id: qId++,
             phase: 'context',
             target,
+            contextSentence: getContextSentence(target),
             options: [target.word_en, ...wrong].sort(() => Math.random() - 0.5),
           });
         } else if (phaseIndex === 2) {
-          // 3. Montar a Palavra (Scramble de letrinhas)
+          // 3. Montar a Palavra (Word Scramble de letrinhas)
           const cleanLetters = target.word_en.toUpperCase().replace(/[^A-Z]/g, '').split('');
           const scrambled = cleanLetters
             .map((char, i) => ({ id: i, char }))
@@ -1220,19 +1389,14 @@ function WeeklyExamRunner({
             scrambledLetters: scrambled,
           });
         } else if (phaseIndex === 3) {
-          // 4. Tradução para o inglês (Português -> Inglês)
-          const wrong = otherWords
-            .sort(() => Math.random() - 0.5)
-            .slice(0, 2)
-            .map((w) => w.word_en);
+          // 4. Caça-Palavras Tradicional com Grade 6x6
           generated.push({
             id: qId++,
-            phase: 'word_find',
+            phase: 'word_search',
             target,
-            options: [target.word_en, ...wrong].sort(() => Math.random() - 0.5),
           });
         } else {
-          // 5. O que significa em português (Inglês com áudio -> Português)
+          // 5. Associação Direta / O que significa (Inglês + Áudio -> Português)
           const wrong = otherWords
             .sort(() => Math.random() - 0.5)
             .slice(0, 2)
@@ -1425,6 +1589,7 @@ function WeeklyExamRunner({
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-4">
+      {/* Top Header */}
       <div className="flex items-center justify-between mb-4">
         <button onClick={onBack} className="flex items-center gap-1.5 text-slate-500 hover:text-slate-800 font-bold text-sm cursor-pointer">
           <ArrowLeft className="w-5 h-5" />
@@ -1433,9 +1598,9 @@ function WeeklyExamRunner({
         <div className="flex items-center gap-2">
           <span className="bg-indigo-100 text-indigo-800 font-black text-xs px-3 py-1 rounded-full uppercase">
             {q.phase === 'listening' && '🎧 1. Ouvir & Identificar'}
-            {q.phase === 'context' && '📝 2. Complete a Frase'}
+            {q.phase === 'context' && '📝 2. Frase do Cotidiano'}
             {q.phase === 'spelling' && '🔤 3. Monte as Letras'}
-            {q.phase === 'word_find' && '🔍 4. Qual é em Inglês?'}
+            {q.phase === 'word_search' && '🔍 4. Caça-Palavras'}
             {q.phase === 'match' && '🔄 5. O que Significa?'}
           </span>
           <span className="text-xs text-slate-400 font-bold">
@@ -1448,7 +1613,7 @@ function WeeklyExamRunner({
       </div>
 
       <div className="bg-white rounded-3xl shadow-md border-2 border-slate-100 p-8 text-center min-h-[420px] flex flex-col justify-between">
-        {/* FASE 1: LISTENING (SOM -> ESCRITA EM INGLÊS) */}
+        {/* FASE 1: LISTENING (SOM -> TEXTO EM INGLÊS) */}
         {q.phase === 'listening' && (
           <>
             <div>
@@ -1489,17 +1654,17 @@ function WeeklyExamRunner({
           </>
         )}
 
-        {/* FASE 2: COMPLETE A FRASE (PORTUGUÊS COM LACUNA) */}
+        {/* FASE 2: COMPLETE A FRASE ESPECÍFICA */}
         {q.phase === 'context' && (
           <>
             <div>
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Complete a frase em português:</p>
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Complete a frase com a palavra certa:</p>
               <div className="bg-indigo-50/70 border border-indigo-200 rounded-2xl p-6 my-6">
-                <p className="text-xl sm:text-2xl font-black text-slate-800">
-                  "No meu dia a dia, eu uso/vejo: <span className="text-indigo-600 underline decoration-indigo-400 decoration-wavy">______</span>"
+                <p className="text-xl sm:text-2xl font-black text-slate-800 leading-relaxed">
+                  "{q.contextSentence}"
                 </p>
-                <p className="text-xs text-slate-400 font-bold mt-2">
-                  (Dica: a palavra significa <strong>"{q.target.word_pt}"</strong>)
+                <p className="text-xs text-slate-500 font-bold mt-3">
+                  (Palavra em português: <strong className="text-indigo-700">{q.target.word_pt}</strong>)
                 </p>
               </div>
             </div>
@@ -1531,7 +1696,7 @@ function WeeklyExamRunner({
           </>
         )}
 
-        {/* FASE 3: MONTE A PALAVRA (SCRAMBLE DE LETRAS • SEM IMAGEM) */}
+        {/* FASE 3: MONTE A PALAVRA (SCRAMBLE DE LETRAS) */}
         {q.phase === 'spelling' && (
           <>
             <div>
@@ -1620,42 +1785,35 @@ function WeeklyExamRunner({
           </>
         )}
 
-        {/* FASE 4: QUAL É EM INGLÊS? (PORTUGUÊS ESCRITO -> INGLÊS) */}
-        {q.phase === 'word_find' && (
-          <>
-            <div>
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Tradução para o Inglês:</p>
-              <div className="my-8">
-                <p className="text-xs text-slate-400 font-bold mb-1">Como se escreve:</p>
-                <h3 className="text-4xl font-black text-slate-800">"{q.target.word_pt}"</h3>
+        {/* FASE 4: CAÇA-PALAVRAS TRADICIONAL COM GRADE */}
+        {q.phase === 'word_search' && (
+          <div>
+            <div className="mb-4">
+              <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full inline-flex items-center gap-1.5 uppercase tracking-wider mb-2">
+                <Search className="w-3.5 h-3.5" /> Encontre a palavra na grade
+              </span>
+              <div className="flex items-center justify-center gap-2 mt-1">
+                <h3 className="text-xl font-black text-slate-800">
+                  Procure: <span className="text-indigo-600">"{q.target.word_pt}"</span>
+                </h3>
+                <button
+                  onClick={() => speakWord(q.target.word_en)}
+                  className="w-8 h-8 rounded-full bg-indigo-100 hover:bg-indigo-200 text-indigo-700 flex items-center justify-center cursor-pointer transition-all"
+                  title="Ouvir som"
+                >
+                  <Volume2 className="w-4 h-4" />
+                </button>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 mt-4">
-              {q.options?.map((opt) => {
-                const isCorrect = opt === q.target.word_en;
-                const isSelected = selectedOpt === opt;
-                let btnStyle = 'border-slate-200 bg-white text-slate-800 hover:border-indigo-400';
-
-                if (answered) {
-                  if (isCorrect) btnStyle = 'border-emerald-500 bg-emerald-50 text-emerald-800 font-black shadow-sm';
-                  else if (isSelected) btnStyle = 'border-rose-500 bg-rose-50 text-rose-800 line-through';
-                  else btnStyle = 'border-slate-100 bg-slate-50 text-slate-300 opacity-40';
-                }
-
-                return (
-                  <button
-                    key={opt}
-                    onClick={() => handleSelectOption(opt, q.target.word_en)}
-                    disabled={answered}
-                    className={`py-5 px-4 rounded-2xl border-2 font-black text-lg transition-all cursor-pointer flex items-center justify-center shadow-xs ${btnStyle}`}
-                  >
-                    {opt}
-                  </button>
-                );
-              })}
-            </div>
-          </>
+            <WordSearchBoard
+              targetWord={q.target.word_en}
+              onWordFound={() => {
+                if (answered) return;
+                advanceWithRecord(true, q.target.word_en, q.target.word_en);
+              }}
+            />
+          </div>
         )}
 
         {/* FASE 5: O QUE SIGNIFICA? (INGLÊS ESCRITO + ÁUDIO -> PORTUGUÊS) */}
