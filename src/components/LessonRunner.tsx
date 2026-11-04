@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { ArrowLeft, Volume2, Check, Lock, Star, Pencil, ChevronRight, Search } from 'lucide-react';
 import type { Module, Word, LessonProgress } from '@/lib/supabase';
 import { supabase, LESSON_STEPS } from '@/lib/supabase';
@@ -26,7 +26,120 @@ function formatFriendlyPhonetic(phonetic?: string | null): string {
 
 // Banco de frases contextuais específicas para cada palavra
 const CONTEXT_SENTENCES: Record<string, string> = {
-  // Brinquedos / Games / Módulo 3
+  // Módulo 1 / Básico & Casa
+  milk: 'Pela manhã no café, bebo no copo um pouco de _____.',
+  water: 'Quando sinto muita sede no calor, bebo bastante _____.',
+  bread: 'Para fazer um sanduíche gostoso, passei manteiga no _____.',
+  apple: 'A fruta vermelha e docinha que mordi é a _____.',
+  banana: 'O macaquinho descascou e comeu uma gostosa _____.',
+  cat: 'O bichinho que mia no telhado é o _____.',
+  dog: 'O animalzinho que late e abana o rabo é o _____.',
+  sun: 'O dia fica bem quentinho e iluminado com o brilho do _____.',
+  tree: 'No meio do parque, os passarinhos cantam no galho da _____.',
+  flower: 'Plantei no jardim uma cheirosa e colorida _____.',
+  bed: 'Quando bate o sono à noite, deito para descansar na minha _____.',
+  house: 'A família inteira mora reunida em uma linda _____.',
+  book: 'Antes de dormir, abri e li uma historinha no meu _____.',
+  shoe: 'Antes de sair de casa, calcei no meu pé o _____.',
+  shirt: 'Para ir à escola bem arrumado, vesti a minha _____.',
+
+  // Módulo 2: Números de 0 a 20 & Formas
+  zero: 'Quando a cesta fica vazia sem nenhuma fruta, temos _____ maçãs.',
+  one: 'No meu rosto, eu tenho apenas _____ nariz.',
+  two: 'Para calçar os meus tênis, eu uso meus _____ pés.',
+  three: 'O semáforo de trânsito tem _____ cores brilhantes.',
+  four: 'A mesa de estudos tem _____ pernas de apoio.',
+  five: 'Em cada uma das minhas mãos, eu conto _____ dedinhos.',
+  six: 'Um inseto no jardim tem exatamente _____ patinhas.',
+  seven: 'O arco-íris no céu tem _____ cores lindas.',
+  eight: 'O polvo nadando no fundo do mar tem _____ tentáculos.',
+  nine: 'O número que vem logo antes do dez é o _____.',
+  ten: 'Juntando os dedinhos das duas mãos, temos _____ dedos.',
+  eleven: 'O número que vem logo depois do dez é o _____.',
+  twelve: 'Uma dúzia inteira de ovos tem _____ unidades.',
+  thirteen: 'O número ímpar que vem depois do doze é o _____.',
+  fourteen: 'Uma quinzena menos um dia é igual ao número _____.',
+  fifteen: 'O relógio marca exatamente meia hora no minuto _____.',
+  sixteen: 'Duas vezes o número oito é igual a _____.',
+  seventeen: 'O número que fica entre o dezesseis e o dezoito é o _____.',
+  eighteen: 'Quando completar _____ anos, já serei uma pessoa adulta.',
+  nineteen: 'O último número da família dos adolescentes antes do vinte é o _____.',
+  twenty: 'Somando os dedos das duas mãos e dos dois pés, temos _____ dedos.',
+  number: 'Escrevi no meu caderno um _____ bem bonito.',
+  count: 'Na brincadeira de esconde-esconde, fecho os olhos para _____ até dez.',
+  total: 'Juntei todas as minhas figurinhas para saber qual era o _____.',
+  circle: 'A bola de futebol tem o formato redondo de um _____.',
+  square: 'A janela da sala tem quatro lados retos como um _____.',
+  triangle: 'A fatia gostosa de pizza parece o formato de um _____.',
+  star: 'À noite no céu escuro, brilha uma linda _____.',
+  more: 'Coloquei mais frutas na cesta porque quero _____ maçãs.',
+  less: 'Tirei um pouco de açúcar do copo para ficar com _____ doce.',
+
+  // Módulo 3: Dezenas Maiores (30 a 100) & Noções Matemáticas
+  thirty: 'O mês do calendário costuma ter _____ dias.',
+  forty: 'Quatro dezenas inteiras formam o número _____.',
+  fifty: 'A metade exata de cem é o número _____.',
+  sixty: 'Uma hora inteira no relógio tem _____ minutos.',
+  seventy: 'Sete notas de dez reais juntas somam _____ reais.',
+  eighty: 'Oito dezenas somadas formam o número _____.',
+  ninety: 'O número de dois dígitos que vem antes do cem é o _____.',
+  hundred: 'Uma centena de moedas equivale ao número _____.',
+  thousand: 'Um pacote muito grande veio com um _____ de pecinhas.',
+  plus: 'Na continha de somar, usamos o sinal de _____.',
+  minus: 'Quando tiramos uma quantidade, fazemos uma conta de _____.',
+  equal: 'Dois mais dois é _____ a quatro.',
+  many: 'No céu estrelado, podemos avistar _____ estrelas.',
+  few: 'Na caixa restavam apenas _____ lápis de cor.',
+  pair: 'Eu comprei um novo _____ de meias para os meus pés.',
+  group: 'Para fazer o trabalho na escola, formamos um _____ de amigos.',
+  all: 'Arrumei o meu quarto e guardei _____ os meus brinquedos.',
+  none: 'Procurei no pote de doces, mas não havia restado _____ bombom.',
+  big: 'O elefante no zoológico é um animal muito _____.',
+  small: 'A formiguinha andando na folha é bem _____.',
+  tall: 'A girafa come as folhas do alto porque é muito _____.',
+  short: 'O banquinho pequeno do jardim é bastante _____.',
+  heavy: 'A caixa cheia de pedras é muito _____ para carregar.',
+  light: 'A pena do passarinho voa no vento porque é super _____.',
+  first: 'Quem cruza a linha de chegada na frente fica em _____ lugar.',
+  second: 'O número dois representa o _____ lugar no pódio.',
+  third: 'Depois do segundo lugar, vem o _____ colocado.',
+  next: 'Estou ansioso para saber qual será o _____ jogo.',
+  last: 'O vagão final que fecha o trem é o _____.',
+  start: 'O apito do juiz indicou o _____ da corrida.',
+
+  // Módulo 4: Calendário, Dias da Semana & Meses
+  monday: 'O primeiro dia de aula da semana começa na _____.',
+  tuesday: 'O dia que vem logo depois da segunda-feira é a _____.',
+  wednesday: 'O meio da semana de estudos é a _____.',
+  thursday: 'O dia que vem antes da sexta-feira é a _____.',
+  day: 'O sol nasceu no horizonte para iluminar um lindo _____.',
+  week: 'De domingo até sábado, completamos uma _____ inteira.',
+  friday: 'O último dia de aula antes do fim de semana é a _____.',
+  saturday: 'Dia de passear e brincar bastante com a família é no _____.',
+  sunday: 'Dia de almoçar reunido e descansar para a semana é no _____.',
+  weekend: 'Sábado e domingo juntos formam o nosso _____.',
+  today: 'O dia em que estamos vivendo agora mesmo chama-se _____.',
+  tomorrow: 'Depois que eu dormir e acordar, será o dia de _____.',
+  january: 'O primeiro mês de férias do ano novo é _____.',
+  february: 'O mês mais curtinho do ano é _____.',
+  march: 'O terceiro mês do ano chama-se _____.',
+  april: 'O mês que vem logo depois de março é _____.',
+  may: 'O mês em que comemoramos o Dia das Mães é _____.',
+  june: 'O mês das festas juninas e fogueiras é _____.',
+  july: 'O mês das férias escolares no meio do ano é _____.',
+  august: 'O mês em que comemoramos o Dia dos Pais é _____.',
+  september: 'O mês em que a primavera começa florindo é _____.',
+  october: 'O mês da festa das crianças é _____.',
+  november: 'O mês que vem logo antes do Natal é _____.',
+  december: 'O mês em que montamos a árvore de Natal é _____.',
+  month: 'O ano é dividido em doze partes, e cada uma é um _____.',
+  year: 'Passamos por quatro estações completas ao longo de um _____.',
+  calendar: 'Para ver as datas e os dias da semana, olhamos no _____.',
+  birthday: 'No dia do meu _____, eu sopro as velinhas do bolo!',
+  holiday: 'Não tem aula na escola hoje porque é dia de _____.',
+  date: 'Escrevi no alto do meu caderno o dia, o mês e a _____ de hoje.',
+
+  // Brinquedos / Play (Módulos anteriores)
   ball: 'No jogo de futebol, chutamos a _____ para fazer o gol.',
   doll: 'A menina gosta de pentear o cabelo da sua _____.',
   car: 'Na pista de corrida, acelero rápido o meu _____.',
@@ -44,23 +157,6 @@ const CONTEXT_SENTENCES: Record<string, string> = {
   swing: 'Segurei firme na corda para ir bem alto no _____.',
   seesaw: 'Para brincar na gangorra, um sobe e o outro desce no _____.',
   sandpit: 'Com o baldinho e a pazinha, fiz castelos no _____.',
-
-  // Primeiros passos / Casa / Comida / Natureza
-  milk: 'Pela manhã no café, bebo no copo um pouco de _____.',
-  water: 'Quando sinto muita sede no calor, bebo bastante _____.',
-  bread: 'Para fazer um sanduíche gostoso, passei manteiga no _____.',
-  apple: 'A fruta vermelha e docinha que mordi é a _____.',
-  banana: 'O macaquinho descascou e comeu uma gostosa _____.',
-  cat: 'O bichinho que mia no telhado é o _____.',
-  dog: 'O animalzinho que late e abana o rabo é o _____.',
-  sun: 'O dia fica bem quentinho e iluminado com o brilho do _____.',
-  tree: 'No meio do parque, os passarinhos cantam no galho da _____.',
-  flower: 'Plantei no jardim uma cheirosa e colorida _____.',
-  bed: 'Quando bate o sono à noite, deito para descansar na minha _____.',
-  house: 'A família inteira mora reunida em uma linda _____.',
-  book: 'Antes de dormir, abri e li uma historinha no meu _____.',
-  shoe: 'Antes de sair de casa, calcei no meu pé o _____.',
-  shirt: 'Para ir à escola bem arrumado, vesti a minha _____.',
 };
 
 // Gera frase específica e contextual para qualquer palavra
@@ -69,7 +165,6 @@ function getContextSentence(word: Word): string {
   if (CONTEXT_SENTENCES[key]) {
     return CONTEXT_SENTENCES[key];
   }
-  // Frase inteligente caso a palavra não esteja no dicionário manual
   return `No dia a dia, quando falamos sobre "${word.word_pt.toLowerCase()}", usamos a palavra _____ em inglês.`;
 }
 
@@ -112,6 +207,14 @@ export default function LessonRunner({
   const [showPinModal, setShowPinModal] = useState(false);
   const [lessonComplete, setLessonComplete] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -123,12 +226,13 @@ export default function LessonRunner({
         .eq('module_id', module.id)
         .order('word_order', { ascending: true });
 
-      if (allModWords) {
-        setModuleAllWords(allModWords as Word[]);
+      const typedAllWords = (allModWords as Word[]) || [];
+      if (isMountedRef.current) {
+        setModuleAllWords(typedAllWords);
       }
 
       if (isExam) {
-        if (allModWords) setWords(allModWords as Word[]);
+        if (isMountedRef.current) setWords(typedAllWords);
       } else {
         let targetLessonId: string | null = null;
         if (lessonDay) {
@@ -150,14 +254,31 @@ export default function LessonRunner({
         }
 
         const { data, error } = await query;
+        let dailyWords: Word[] = [];
+
         if (!error && data && data.length > 0) {
-          setWords(data as Word[]);
-        } else if (allModWords && allModWords.length > 0) {
-          setWords(allModWords.slice(0, 5) as Word[]);
+          dailyWords = data as Word[];
+        } else if (typedAllWords.length > 0) {
+          dailyWords = typedAllWords;
+        }
+
+        // Garante no máximo 7 palavras e no mínimo 5 por dia
+        if (dailyWords.length > 7) {
+          dailyWords = dailyWords.slice(0, 7);
+        } else if (dailyWords.length < 5 && typedAllWords.length >= 5) {
+          const needed = 5 - dailyWords.length;
+          const extras = typedAllWords
+            .filter((tw) => !dailyWords.some((dw) => dw.id === tw.id))
+            .slice(0, needed);
+          dailyWords = [...dailyWords, ...extras];
+        }
+
+        if (isMountedRef.current) {
+          setWords(dailyWords);
         }
       }
 
-      setLoading(false);
+      if (isMountedRef.current) setLoading(false);
     })();
   }, [module.id, lessonDay, isExam]);
 
@@ -212,8 +333,10 @@ export default function LessonRunner({
     if (step < 4) {
       saveProgress(step + 1);
       setTimeout(() => {
-        setCurrentStep(step + 1);
-        setTimeLeft(STEP_DURATION);
+        if (isMountedRef.current) {
+          setCurrentStep(step + 1);
+          setTimeLeft(STEP_DURATION);
+        }
       }, 600);
     }
   }
@@ -288,7 +411,9 @@ export default function LessonRunner({
     } catch (e) {}
 
     celebrate();
-    setLessonComplete(true);
+    if (isMountedRef.current) {
+      setLessonComplete(true);
+    }
   }
 
   function handleParentApprove(e: React.FormEvent) {
@@ -1168,7 +1293,6 @@ function WordSearchBoard({
   targetWord: string;
   onWordFound: () => void;
 }) {
-  // 1. Limpa espaços e caracteres especiais (ex: "SMELL GOOD" -> "SMELLGOOD")
   const cleanTarget = (targetWord || '').toUpperCase().replace(/[^A-Z]/g, '');
   const [selectedCoords, setSelectedCoords] = useState<{ r: number; c: number }[]>([]);
   const [gridData, setGridData] = useState<{
@@ -1180,17 +1304,14 @@ function WordSearchBoard({
     if (!cleanTarget) return;
 
     const len = cleanTarget.length;
-    // O tamanho da grade precisa ser no mínimo o tamanho da palavra + 1 (mínimo 6)
     const size = Math.max(6, len + 1);
 
-    // Inicializa grade com letras aleatórias
     const g: string[][] = Array.from({ length: size }, () =>
       Array.from({ length: size }, () =>
         String.fromCharCode(65 + Math.floor(Math.random() * 26))
       )
     );
 
-    // Sorteia direção: true = horizontal, false = vertical
     const isHorizontal = Math.random() > 0.5;
 
     if (isHorizontal) {
@@ -1223,7 +1344,6 @@ function WordSearchBoard({
 
     setSelectedCoords(nextCoords);
 
-    // Checa se o conjunto de letras clicadas formou a palavra certa
     const currentLetters = nextCoords
       .map((pos) => gridData.grid[pos.r]?.[pos.c] || '')
       .join('');
@@ -1243,7 +1363,6 @@ function WordSearchBoard({
 
   return (
     <div className="flex flex-col items-center w-full">
-      {/* Grade com colunas flexíveis de acordo com o tamanho da palavra */}
       <div 
         className="grid gap-1.5 sm:gap-2 p-3 bg-indigo-50/70 border-2 border-indigo-200 rounded-3xl max-w-full mx-auto shadow-xs"
         style={{
@@ -1272,7 +1391,6 @@ function WordSearchBoard({
         )}
       </div>
 
-      {/* Leitor de Letras Formadas */}
       <div className="flex items-center gap-3 mt-4">
         <div className="px-4 py-2 bg-slate-100 rounded-xl border border-slate-200 text-slate-700 font-extrabold text-sm min-w-[140px] text-center">
           Letras: <span className="text-indigo-600 font-black">{currentConstructedWord || '...'}</span>
@@ -1289,7 +1407,7 @@ function WordSearchBoard({
   );
 }
 
-/* ==================== PROVA AVALIATIVA REFORMULADA (5 FASES • NOTA 0 A 10) ==================== */
+/* ==================== PROVA AVALIATIVA (5 FASES • NOTA 0 A 10) ==================== */
 type ExamPhase = 'listening' | 'context' | 'spelling' | 'word_search' | 'match';
 
 interface ExamQuestion {
@@ -1334,7 +1452,6 @@ function WeeklyExamRunner({
 
       let wordPool = [...words];
 
-      // Se o módulo atual tiver menos de 25 palavras, busca reforço dos módulos anteriores
       if (wordPool.length < 25) {
         const { data: pastWords } = await supabase
           .from('words')
@@ -1362,7 +1479,6 @@ function WeeklyExamRunner({
         const otherWords = examWords.filter((w) => w.id !== target.id);
 
         if (phaseIndex === 0) {
-          // 1. Escuta pura (Listening: Áudio -> Texto em inglês)
           const wrong = otherWords
             .sort(() => Math.random() - 0.5)
             .slice(0, 2)
@@ -1374,7 +1490,6 @@ function WeeklyExamRunner({
             options: [target.word_en, ...wrong].sort(() => Math.random() - 0.5),
           });
         } else if (phaseIndex === 1) {
-          // 2. Complete a Frase Específica (Com contexto real da palavra)
           const wrong = otherWords
             .sort(() => Math.random() - 0.5)
             .slice(0, 2)
@@ -1387,7 +1502,6 @@ function WeeklyExamRunner({
             options: [target.word_en, ...wrong].sort(() => Math.random() - 0.5),
           });
         } else if (phaseIndex === 2) {
-          // 3. Montar a Palavra (Word Scramble de letrinhas)
           const cleanLetters = target.word_en.toUpperCase().replace(/[^A-Z]/g, '').split('');
           const scrambled = cleanLetters
             .map((char, i) => ({ id: i, char }))
@@ -1399,14 +1513,12 @@ function WeeklyExamRunner({
             scrambledLetters: scrambled,
           });
         } else if (phaseIndex === 3) {
-          // 4. Caça-Palavras Tradicional com Grade 6x6
           generated.push({
             id: qId++,
             phase: 'word_search',
             target,
           });
         } else {
-          // 5. Associação Direta / O que significa (Inglês + Áudio -> Português)
           const wrong = otherWords
             .sort(() => Math.random() - 0.5)
             .slice(0, 2)
@@ -1599,7 +1711,6 @@ function WeeklyExamRunner({
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-4">
-      {/* Top Header */}
       <div className="flex items-center justify-between mb-4">
         <button onClick={onBack} className="flex items-center gap-1.5 text-slate-500 hover:text-slate-800 font-bold text-sm cursor-pointer">
           <ArrowLeft className="w-5 h-5" />
@@ -1623,7 +1734,7 @@ function WeeklyExamRunner({
       </div>
 
       <div className="bg-white rounded-3xl shadow-md border-2 border-slate-100 p-8 text-center min-h-[420px] flex flex-col justify-between">
-        {/* FASE 1: LISTENING (SOM -> TEXTO EM INGLÊS) */}
+        {/* FASE 1: LISTENING */}
         {q.phase === 'listening' && (
           <>
             <div>
@@ -1664,7 +1775,7 @@ function WeeklyExamRunner({
           </>
         )}
 
-        {/* FASE 2: COMPLETE A FRASE ESPECÍFICA */}
+        {/* FASE 2: COMPLETE A FRASE */}
         {q.phase === 'context' && (
           <>
             <div>
@@ -1706,7 +1817,7 @@ function WeeklyExamRunner({
           </>
         )}
 
-        {/* FASE 3: MONTE A PALAVRA (SCRAMBLE DE LETRAS) */}
+        {/* FASE 3: MONTE A PALAVRA */}
         {q.phase === 'spelling' && (
           <>
             <div>
@@ -1795,7 +1906,7 @@ function WeeklyExamRunner({
           </>
         )}
 
-        {/* FASE 4: CAÇA-PALAVRAS TRADICIONAL COM GRADE */}
+        {/* FASE 4: CAÇA-PALAVRAS */}
         {q.phase === 'word_search' && (
           <div>
             <div className="mb-4">
@@ -1826,7 +1937,7 @@ function WeeklyExamRunner({
           </div>
         )}
 
-        {/* FASE 5: O QUE SIGNIFICA? (INGLÊS ESCRITO + ÁUDIO -> PORTUGUÊS) */}
+        {/* FASE 5: O QUE SIGNIFICA? */}
         {q.phase === 'match' && (
           <>
             <div>
