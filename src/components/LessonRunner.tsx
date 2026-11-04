@@ -557,7 +557,7 @@ export default function LessonRunner({
         {currentStep === 3 && (
           <Step3MiniGames 
             words={words} 
-            poolWords={moduleAllWords.length > 0 ? moduleAllWords : words} 
+            poolWords={words} 
             onComplete={() => completeStep(3)} 
           />
         )}
