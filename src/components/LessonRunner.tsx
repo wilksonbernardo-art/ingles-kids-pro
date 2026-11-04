@@ -24,7 +24,7 @@ function formatFriendlyPhonetic(phonetic?: string | null): string {
     .replace(/ʊ/g, 'u');
 }
 
-// const CONTEXT_SENTENCES: Record<string, string> = {
+const CONTEXT_SENTENCES: Record<string, string> = {
   // ==========================================
   // MÓDULO 1: Primeiros Passos & Saudações
   // ==========================================
